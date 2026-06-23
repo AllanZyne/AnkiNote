@@ -11,7 +11,7 @@ export function buildApp(db) {
   app.use('/api/notes', notesRouter(db));
 
   app.use((err, req, res, next) => {
-    if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || (err.message && err.message.includes('FOREIGN KEY'))) {
+    if (err.code?.startsWith('SQLITE_CONSTRAINT')) {
       return res.status(400).json({ error: 'bad reference' });
     }
     res.status(500).json({ error: err.message });
