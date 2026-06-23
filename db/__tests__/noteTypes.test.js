@@ -4,7 +4,7 @@ import {
   createNoteType, getNoteType, listNoteTypes, updateNoteType, deleteNoteType
 } from '../noteTypes.js';
 import { createBox } from '../boxes.js';
-import { createNote } from '../notes.js';
+import { createNote, getNote, updateNote } from '../notes.js';
 
 let db;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -54,5 +54,59 @@ describe('note types', () => {
     const nt = createNoteType(db, basic);
     deleteNoteType(db, nt.id);
     expect(getNoteType(db, nt.id)).toBeUndefined();
+  });
+
+  it('preserves note field values when updating note type css only', () => {
+    const nt = createNoteType(db, basic);
+    const box = createBox(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+    const originalCardCount = note.cardIds.length;
+
+    updateNoteType(db, nt.id, {
+      name: 'Basic',
+      css: '.card{color:red}',
+      fields: [{ name: 'Front' }, { name: 'Back' }],
+      templates: [{ name: 'Card 1', frontHtml: '{{Front}}', backHtml: '{{Front}}<hr>{{Back}}' }]
+    });
+
+    const updated = getNote(db, note.id);
+    expect(updated.values).toEqual({ Front: 'hola', Back: 'hello' });
+    expect(updated.cardIds.length).toBe(originalCardCount);
+  });
+
+  it('adds empty field value for new field on existing notes', () => {
+    const nt = createNoteType(db, basic);
+    const box = createBox(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+
+    updateNoteType(db, nt.id, {
+      name: 'Basic',
+      css: '',
+      fields: [{ name: 'Front' }, { name: 'Back' }, { name: 'Extra' }],
+      templates: [{ name: 'Card 1', frontHtml: '{{Front}}', backHtml: '{{Back}}' }]
+    });
+
+    const updated = getNote(db, note.id);
+    expect(updated.values).toEqual({ Front: 'hola', Back: 'hello', Extra: '' });
+
+    updateNote(db, note.id, { values: { Front: 'hola', Back: 'hello', Extra: 'extra content' } });
+    expect(getNote(db, note.id).values.Extra).toBe('extra content');
+  });
+
+  it('removes field value when field is deleted but preserves others', () => {
+    const nt = createNoteType(db, basic);
+    const box = createBox(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+
+    updateNoteType(db, nt.id, {
+      name: 'Basic',
+      css: '',
+      fields: [{ name: 'Front' }],
+      templates: [{ name: 'Card 1', frontHtml: '{{Front}}', backHtml: '' }]
+    });
+
+    const updated = getNote(db, note.id);
+    expect(updated.values).toEqual({ Front: 'hola' });
+    expect(updated.values.Back).toBeUndefined();
   });
 });

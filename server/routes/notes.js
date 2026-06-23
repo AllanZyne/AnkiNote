@@ -23,8 +23,11 @@ export function notesRouter(db) {
     res.status(201).json(createNote(db, { noteTypeId, boxId, values }));
   });
   r.put('/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const existing = getNote(db, id);
+    if (!existing) return res.status(404).json({ error: 'not found' });
     const { boxId, values } = req.body;
-    res.json(updateNote(db, Number(req.params.id), { boxId, values }));
+    res.json(updateNote(db, id, { boxId, values }));
   });
   r.delete('/:id', (req, res) => {
     deleteNote(db, Number(req.params.id));

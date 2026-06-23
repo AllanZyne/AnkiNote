@@ -45,4 +45,17 @@ describe('note routes', () => {
     const del = await request(app).delete(`/api/notes/${created.body.id}`);
     expect(del.status).toBe(204);
   });
+
+  it('returns 400 on bad foreign key reference', async () => {
+    const res = await request(app).post('/api/notes')
+      .send({ noteTypeId: 99999, boxId: ids.boxId, values: { Front: 'a' } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('bad reference');
+  });
+
+  it('returns 404 on update to unknown note id', async () => {
+    const res = await request(app).put('/api/notes/99999')
+      .send({ values: { Front: 'A' } });
+    expect(res.status).toBe(404);
+  });
 });
