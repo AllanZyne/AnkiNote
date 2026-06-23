@@ -1,11 +1,11 @@
-# CardNote — an Anki-style note app
+# AnkiNote — an Anki-style note app
 
 **Date:** 2026-06-23
 **Status:** Approved design
 
 ## Overview
 
-CardNote is a note-taking app modeled closely on Anki's data design, but
+AnkiNote is a note-taking app modeled closely on Anki's data design, but
 without spaced-repetition review. Each note is a card with a front and a back;
 only the front shows by default, and clicking reveals the back. Notes are
 authored against a **note type** (template) that defines named fields and the
