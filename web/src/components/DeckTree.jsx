@@ -1,40 +1,31 @@
 import React from 'react';
 import DeckMenu from './DeckMenu.jsx';
+import { buildDeckTree } from '../lib/deckTree.js';
 
-function rank(deck) {
-  if (deck.archived) return 2;
-  if (deck.pinned) return 0;
-  return 1;
-}
-
-function sortedChildren(decks, parentId) {
-  return decks
-    .filter(d => d.parentId === parentId)
-    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-}
-
-function DeckNode({ deck, decks, activeId, onSelect, actions, depth }) {
-  const children = sortedChildren(decks, deck.id);
-  const cls = `deck-node${deck.id === activeId ? ' active' : ''}${deck.archived ? ' archived' : ''}`;
+function DeckNode({ node, activeId, onSelect, actions, depth }) {
+  const real = node.deck;
+  const cls = `deck-node${real && real.id === activeId ? ' active' : ''}${node.archived ? ' archived' : ''}`;
   return (
     <div>
       <div
         className={cls}
         style={{ paddingLeft: 6 + depth * 14 }}
-        onClick={() => onSelect(deck.id)}
+        onClick={() => real && onSelect(real.id)}
       >
-        <span className="deck-name">{deck.name}</span>
-        <DeckMenu
-          deck={deck}
-          onRename={actions.onRename}
-          onTogglePin={actions.onTogglePin}
-          onToggleArchive={actions.onToggleArchive}
-          onDelete={actions.onDelete}
-        />
+        <span className="deck-name">{node.segment}</span>
+        {real && (
+          <DeckMenu
+            deck={real}
+            onRename={actions.onRename}
+            onTogglePin={actions.onTogglePin}
+            onToggleArchive={actions.onToggleArchive}
+            onDelete={actions.onDelete}
+          />
+        )}
       </div>
-      {children.map(c => (
-        <DeckNode key={c.id} deck={c} decks={decks}
-          activeId={activeId} onSelect={onSelect} actions={actions} depth={depth + 1} />
+      {node.children.map(c => (
+        <DeckNode key={c.path} node={c} activeId={activeId}
+          onSelect={onSelect} actions={actions} depth={depth + 1} />
       ))}
     </div>
   );
@@ -44,11 +35,12 @@ export default function DeckTree({
   decks, activeId, onSelect, onRename, onTogglePin, onToggleArchive, onDelete,
 }) {
   const actions = { onRename, onTogglePin, onToggleArchive, onDelete };
+  const tree = buildDeckTree(decks);
   return (
     <div>
-      {sortedChildren(decks, null).map(d => (
-        <DeckNode key={d.id} deck={d} decks={decks}
-          activeId={activeId} onSelect={onSelect} actions={actions} depth={0} />
+      {tree.map(n => (
+        <DeckNode key={n.path} node={n} activeId={activeId}
+          onSelect={onSelect} actions={actions} depth={0} />
       ))}
     </div>
   );
