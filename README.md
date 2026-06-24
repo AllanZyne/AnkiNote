@@ -31,3 +31,7 @@ Open http://localhost:5173.
 npm test            # db + server
 cd web && npm test  # web
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Yang Zhao
