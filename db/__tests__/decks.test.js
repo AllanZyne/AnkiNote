@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDb } from '../connection.js';
 import { createDeck, listDecks, renameDeck, deleteDeck, setDeckPinned, setDeckArchived } from '../decks.js';
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 
 let db;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -53,5 +56,31 @@ describe('decks', () => {
     expect(listDecks(db)[0].archived).toBe(true);
     setDeckArchived(db, deck.id, false);
     expect(listDecks(db)[0].archived).toBe(false);
+  });
+});
+
+describe('deck table migration', () => {
+  const testDbPath = path.join(process.cwd(), `test-migration-${process.pid}.db`);
+  afterEach(() => { fs.rmSync(testDbPath, { force: true }); });
+
+  it('migrates an old deck table (missing pinned/archived) when opening the database', () => {
+    // Create old-shape deck table (only id, name, parent_id)
+    const oldDb = new Database(testDbPath);
+    oldDb.exec(`
+      CREATE TABLE deck (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        parent_id INTEGER
+      );
+      INSERT INTO deck (name, parent_id) VALUES ('Spanish', NULL);
+    `);
+    oldDb.close();
+
+    // Open with openDb (should auto-migrate)
+    const migratedDb = openDb(testDbPath);
+    const decks = listDecks(migratedDb);
+    expect(decks).toHaveLength(1);
+    expect(decks[0]).toMatchObject({ name: 'Spanish', pinned: false, archived: false });
+    migratedDb.close();
   });
 });
