@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDb } from '../connection.js';
-import { createDeck, listDecks, renameDeck, deleteDeck, setDeckPinned, setDeckArchived } from '../decks.js';
+import { createDeck, listDecks, renameDeck, deleteDeck, setDeckPinned, setDeckArchived, validateDeckPath } from '../decks.js';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -56,6 +56,17 @@ describe('decks', () => {
     expect(listDecks(db)[0].archived).toBe(true);
     setDeckArchived(db, deck.id, false);
     expect(listDecks(db)[0].archived).toBe(false);
+  });
+
+  it('validateDeckPath accepts a nested path and normalizes whitespace', () => {
+    expect(validateDeckPath(' Spanish :: Verbs ')).toMatchObject({ valid: true, normalized: 'Spanish::Verbs' });
+  });
+
+  it('validateDeckPath rejects empty segments and empty names', () => {
+    expect(validateDeckPath('Spanish::').valid).toBe(false);
+    expect(validateDeckPath('::Verbs').valid).toBe(false);
+    expect(validateDeckPath('A::::B').valid).toBe(false);
+    expect(validateDeckPath('   ').valid).toBe(false);
   });
 });
 

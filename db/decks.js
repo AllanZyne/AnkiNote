@@ -1,3 +1,12 @@
+export function validateDeckPath(name) {
+  if (typeof name !== 'string') return { valid: false, error: 'name must be a string' };
+  const segments = name.split('::').map(s => s.trim());
+  if (segments.length === 0 || segments.some(s => s === '')) {
+    return { valid: false, error: 'deck name has empty segments' };
+  }
+  return { valid: true, normalized: segments.join('::') };
+}
+
 export function createDeck(db, { name, parentId = null }) {
   const info = db.prepare(
     'INSERT INTO deck (name, parent_id) VALUES (?, ?)'
@@ -7,7 +16,7 @@ export function createDeck(db, { name, parentId = null }) {
 
 export function listDecks(db) {
   return db.prepare(
-    'SELECT id, name, parent_id AS parentId, pinned, archived FROM deck ORDER BY name'
+    'SELECT id, name, pinned, archived FROM deck ORDER BY name'
   ).all().map(d => ({ ...d, pinned: !!d.pinned, archived: !!d.archived }));
 }
 
