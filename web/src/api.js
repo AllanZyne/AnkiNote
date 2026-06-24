@@ -12,6 +12,7 @@ export const api = {
   listDecks: () => req('/api/decks'),
   createDeck: (d) => req('/api/decks', json('POST', d)),
   renameDeck: (id, name) => req(`/api/decks/${id}`, json('PATCH', { name })),
+  updateDeck: (id, patch) => req(`/api/decks/${id}`, json('PATCH', patch)),
   deleteDeck: (id) => req(`/api/decks/${id}`, { method: 'DELETE' }),
 
   listNoteTypes: () => req('/api/note-types'),

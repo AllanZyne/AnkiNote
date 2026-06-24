@@ -27,4 +27,12 @@ describe('api client', () => {
     const res = await api.searchNotes('cat');
     expect(res.url).toBe('/api/notes?q=cat');
   });
+
+  it('updates a deck via PATCH with a patch body', async () => {
+    await api.updateDeck(7, { pinned: true });
+    const call = global.fetch.mock.calls[0];
+    expect(call[0]).toBe('/api/decks/7');
+    expect(call[1].method).toBe('PATCH');
+    expect(JSON.parse(call[1].body)).toEqual({ pinned: true });
+  });
 });
