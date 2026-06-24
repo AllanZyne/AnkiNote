@@ -28,4 +28,23 @@ describe('deck routes', () => {
     const res = await request(app).post('/api/decks').send({});
     expect(res.status).toBe(400);
   });
+
+  it('pins a deck via PATCH', async () => {
+    const { body } = await request(app).post('/api/decks').send({ name: 'D' });
+    const res = await request(app).patch(`/api/decks/${body.id}`).send({ pinned: true });
+    expect(res.status).toBe(200);
+    expect(res.body.pinned).toBe(true);
+  });
+
+  it('archives a deck via PATCH', async () => {
+    const { body } = await request(app).post('/api/decks').send({ name: 'D' });
+    const res = await request(app).patch(`/api/decks/${body.id}`).send({ archived: true });
+    expect(res.body.archived).toBe(true);
+  });
+
+  it('400s on an empty PATCH body', async () => {
+    const { body } = await request(app).post('/api/decks').send({ name: 'D' });
+    const res = await request(app).patch(`/api/decks/${body.id}`).send({});
+    expect(res.status).toBe(400);
+  });
 });
