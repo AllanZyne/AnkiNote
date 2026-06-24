@@ -1,3 +1,7 @@
+function likePrefix(name) {
+  return name.replace(/[\\%_]/g, c => '\\' + c) + '::%';
+}
+
 export function validateDeckPath(name) {
   if (typeof name !== 'string') return { valid: false, error: 'name must be a string' };
   const segments = name.split('::').map(s => s.trim());
@@ -42,7 +46,7 @@ export function deleteDeck(db, id) {
   const deck = db.prepare('SELECT name FROM deck WHERE id = ?').get(id);
   if (!deck) return;
   db.transaction(() => {
-    db.prepare('DELETE FROM deck WHERE name = ? OR name LIKE ?').run(deck.name, `${deck.name}::%`);
+    db.prepare("DELETE FROM deck WHERE name = ? OR name LIKE ? ESCAPE '\\'").run(deck.name, likePrefix(deck.name));
   })();
 }
 
@@ -71,8 +75,8 @@ export function renameDeck(db, id, newName) {
       if (!deckByName(db, anc)) insAnc.run(anc);
     }
     // Rewrite the deck itself and all its prefix-descendants.
-    const affected = db.prepare('SELECT id, name FROM deck WHERE name = ? OR name LIKE ?')
-      .all(oldName, `${oldName}::%`);
+    const affected = db.prepare("SELECT id, name FROM deck WHERE name = ? OR name LIKE ? ESCAPE '\\'")
+      .all(oldName, likePrefix(oldName));
     for (const a of affected) {
       const rewritten = target + a.name.slice(oldName.length);
       const clash = db.prepare('SELECT id FROM deck WHERE name = ? AND id != ?').get(rewritten, a.id);

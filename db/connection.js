@@ -22,16 +22,19 @@ function migrateDeckToPaths(db) {
     return r.parentId == null ? r.name : `${pathOf(byId.get(r.parentId))}::${r.name}`;
   };
   db.pragma('foreign_keys = OFF');
-  db.transaction(() => {
-    db.exec(`CREATE TABLE deck_new (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
-      pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0)`);
-    const ins = db.prepare('INSERT INTO deck_new (id, name, pinned, archived) VALUES (?, ?, ?, ?)');
-    for (const r of rows) ins.run(r.id, pathOf(r), r.pinned, r.archived);
-    db.exec('DROP TABLE deck');
-    db.exec('ALTER TABLE deck_new RENAME TO deck');
-  })();
-  db.pragma('foreign_keys = ON');
+  try {
+    db.transaction(() => {
+      db.exec(`CREATE TABLE deck_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+        pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0)`);
+      const ins = db.prepare('INSERT INTO deck_new (id, name, pinned, archived) VALUES (?, ?, ?, ?)');
+      for (const r of rows) ins.run(r.id, pathOf(r), r.pinned, r.archived);
+      db.exec('DROP TABLE deck');
+      db.exec('ALTER TABLE deck_new RENAME TO deck');
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 export function openDb(path = ':memory:') {

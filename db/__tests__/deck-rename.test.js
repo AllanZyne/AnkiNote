@@ -56,4 +56,13 @@ describe('renameDeck', () => {
     const a = createDeck(db, { name: 'A' });
     expect(() => renameDeck(db, a.id, 'A::')).toThrow('invalid deck name');
   });
+
+  it('renameDeck escapes LIKE wildcards', () => {
+    createDeck(db, { name: 'A_b' });
+    createDeck(db, { name: 'A_b::child' });
+    createDeck(db, { name: 'AQb::x' });
+    const ab = listDecks(db).find(d => d.name === 'A_b');
+    renameDeck(db, ab.id, 'Z');
+    expect(names()).toEqual(['AQb', 'AQb::x', 'Z', 'Z::child']);
+  });
 });

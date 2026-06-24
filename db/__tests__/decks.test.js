@@ -43,6 +43,22 @@ describe('decks', () => {
     expect(listDecks(db).map(d => d.name).sort()).toEqual(['A', 'A::X']);
   });
 
+  it('deleteDeck escapes LIKE wildcards (underscore)', () => {
+    createDeck(db, { name: 'A_b::child' });
+    createDeck(db, { name: 'AQb::x' });
+    const ab = listDecks(db).find(d => d.name === 'A_b');
+    deleteDeck(db, ab.id);
+    expect(listDecks(db).map(d => d.name).sort()).toEqual(['AQb', 'AQb::x']);
+  });
+
+  it('deleteDeck escapes LIKE wildcards (percent)', () => {
+    createDeck(db, { name: 'A%b::child' });
+    createDeck(db, { name: 'AZZb::x' });
+    const ab = listDecks(db).find(d => d.name === 'A%b');
+    deleteDeck(db, ab.id);
+    expect(listDecks(db).map(d => d.name).sort()).toEqual(['AZZb', 'AZZb::x']);
+  });
+
   it('sets and clears the pinned flag', () => {
     const deck = createDeck(db, { name: 'D' });
     setDeckPinned(db, deck.id, true);
