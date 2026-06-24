@@ -17,7 +17,10 @@ function migrateDeckToPaths(db) {
   if (!cols.includes('parent_id')) return; // already path-based
   const rows = db.prepare('SELECT id, name, parent_id AS parentId, pinned, archived FROM deck').all();
   const byId = new Map(rows.map(r => [r.id, r]));
-  const pathOf = (r) => r.parentId == null ? r.name : `${pathOf(byId.get(r.parentId))}::${r.name}`;
+  const pathOf = (r) => {
+    if (!r) throw new Error('deck references missing parent');
+    return r.parentId == null ? r.name : `${pathOf(byId.get(r.parentId))}::${r.name}`;
+  };
   db.pragma('foreign_keys = OFF');
   db.transaction(() => {
     db.exec(`CREATE TABLE deck_new (

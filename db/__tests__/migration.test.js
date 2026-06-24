@@ -26,4 +26,19 @@ describe('parent_id -> path migration', () => {
     const cols = db.prepare('PRAGMA table_info(deck)').all().map(c => c.name);
     expect(cols).not.toContain('parent_id');
   });
+
+  it('throws clear error when orphaned deck parent_id points to non-existent row', () => {
+    const PATH2 = `/tmp/ankinote-orphan-${process.pid}.db`;
+    const raw = new Database(PATH2);
+    raw.pragma('foreign_keys = OFF');
+    raw.exec(`CREATE TABLE deck (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      parent_id INTEGER,
+      pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0)`);
+    raw.prepare('INSERT INTO deck (name, parent_id) VALUES (?, ?)').run('Orphan', 999);
+    raw.close();
+
+    expect(() => openDb(PATH2)).toThrow(/missing parent/);
+    rmSync(PATH2, { force: true });
+  });
 });
