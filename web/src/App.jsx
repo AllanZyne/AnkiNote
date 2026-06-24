@@ -28,8 +28,8 @@ export default function App() {
   useEffect(() => { refreshNotes(); }, [refreshNotes]);
 
   const addDeck = async () => {
-    const name = prompt('Deck name:');
-    if (name) { await api.createDeck({ name, parentId: activeDeck }); refreshDecks(); }
+    const name = prompt('New deck (use :: for sub-decks, e.g. Spanish::Verbs):');
+    if (name) { await api.createDeck({ name }); refreshDecks(); }
   };
 
   const renameDeck = async (deck) => {

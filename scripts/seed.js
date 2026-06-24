@@ -13,7 +13,7 @@ if (listNoteTypes(db).length === 0) {
     templates: [{ name: 'Card 1', frontHtml: '{{Front}}', backHtml: '{{Front}}\n<hr>\n{{Back}}' }],
   });
   const spanish = createDeck(db, { name: 'Spanish' });
-  const verbs = createDeck(db, { name: 'Verbs', parentId: spanish.id });
+  const verbs = createDeck(db, { name: 'Spanish::Verbs' });
   const math = createDeck(db, { name: 'Math' });
   createNote(db, { noteTypeId: basic.id, deckId: spanish.id,
     values: { Front: '**hola**', Back: 'hello' } });
