@@ -32,6 +32,28 @@ export default function App() {
     if (name) { await api.createDeck({ name, parentId: activeDeck }); refreshDecks(); }
   };
 
+  const renameDeck = async (deck) => {
+    const name = prompt('Rename deck:', deck.name);
+    if (name && name !== deck.name) { await api.renameDeck(deck.id, name); refreshDecks(); }
+  };
+
+  const togglePin = async (deck) => {
+    await api.updateDeck(deck.id, { pinned: !deck.pinned });
+    refreshDecks();
+  };
+
+  const toggleArchive = async (deck) => {
+    await api.updateDeck(deck.id, { archived: !deck.archived });
+    refreshDecks();
+  };
+
+  const removeDeck = async (deck) => {
+    if (!confirm(`Delete deck "${deck.name}" and all its sub-decks and notes?`)) return;
+    await api.deleteDeck(deck.id);
+    if (activeDeck === deck.id) setActiveDeck(null);
+    refreshDecks();
+  };
+
   const saveNote = async (values) => {
     if (modal.note) await api.updateNote(modal.note.id, { values });
     else await api.createNote({ noteTypeId: modal.noteType.id, deckId: activeDeck, values });
@@ -63,7 +85,15 @@ export default function App() {
           <strong>Decks</strong>
           <button onClick={addDeck}>+</button>
         </div>
-        <DeckTree decks={decks} activeId={activeDeck} onSelect={setActiveDeck} />
+        <DeckTree
+          decks={decks}
+          activeId={activeDeck}
+          onSelect={setActiveDeck}
+          onRename={renameDeck}
+          onTogglePin={togglePin}
+          onToggleArchive={toggleArchive}
+          onDelete={removeDeck}
+        />
         <hr />
         <button onClick={() => setModal({ kind: 'noteType', noteType: null })}>
           Manage note types
