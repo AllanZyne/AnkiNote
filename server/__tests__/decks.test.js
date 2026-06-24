@@ -47,4 +47,25 @@ describe('deck routes', () => {
     const res = await request(app).patch(`/api/decks/${body.id}`).send({});
     expect(res.status).toBe(400);
   });
+
+  it('409s on creating a duplicate deck', async () => {
+    await request(app).post('/api/decks').send({ name: 'Spanish' });
+    const res = await request(app).post('/api/decks').send({ name: 'Spanish' });
+    expect(res.status).toBe(409);
+  });
+
+  it('400s on an invalid deck name', async () => {
+    const res = await request(app).post('/api/decks').send({ name: 'A::' });
+    expect(res.status).toBe(400);
+  });
+
+  it('renames a deck to change its level', async () => {
+    await request(app).post('/api/decks').send({ name: 'Spanish::Verbs' });
+    const list = (await request(app).get('/api/decks')).body;
+    const spanish = list.find(d => d.name === 'Spanish');
+    const res = await request(app).patch(`/api/decks/${spanish.id}`).send({ name: 'Language' });
+    expect(res.status).toBe(200);
+    const after = (await request(app).get('/api/decks')).body.map(d => d.name).sort();
+    expect(after).toEqual(['Language', 'Language::Verbs']);
+  });
 });
