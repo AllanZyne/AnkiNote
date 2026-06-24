@@ -53,3 +53,35 @@ export function setDeckPinned(db, id, pinned) {
 export function setDeckArchived(db, id, archived) {
   db.prepare('UPDATE deck SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
 }
+
+export function renameDeck(db, id, newName) {
+  const v = validateDeckPath(newName);
+  if (!v.valid) throw new Error('invalid deck name');
+  const target = v.normalized;
+  const row = db.prepare('SELECT id, name FROM deck WHERE id = ?').get(id);
+  if (!row) throw new Error('deck not found');
+  const oldName = row.name;
+  if (target === oldName) return;
+  if (target.startsWith(oldName + '::')) throw new Error('cannot move into own subtree');
+
+  db.transaction(() => {
+    // Auto-create missing ancestors of the new name.
+    const insAnc = db.prepare('INSERT INTO deck (name) VALUES (?)');
+    for (const anc of ancestorPaths(target)) {
+      if (!deckByName(db, anc)) insAnc.run(anc);
+    }
+    // Rewrite the deck itself and all its prefix-descendants.
+    const affected = db.prepare('SELECT id, name FROM deck WHERE name = ? OR name LIKE ?')
+      .all(oldName, `${oldName}::%`);
+    for (const a of affected) {
+      const rewritten = target + a.name.slice(oldName.length);
+      const clash = db.prepare('SELECT id FROM deck WHERE name = ? AND id != ?').get(rewritten, a.id);
+      if (clash) {
+        // Merge: move the colliding row's notes to the surviving (renamed) row, drop the duplicate.
+        db.prepare('UPDATE note SET deck_id = ? WHERE deck_id = ?').run(a.id, clash.id);
+        db.prepare('DELETE FROM deck WHERE id = ?').run(clash.id);
+      }
+      db.prepare('UPDATE deck SET name = ? WHERE id = ?').run(rewritten, a.id);
+    }
+  })();
+}
