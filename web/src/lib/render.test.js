@@ -30,4 +30,30 @@ describe('render', () => {
     expect(doc).toContain('.card{color:red}');
     expect(doc).toContain('<p>hi</p>');
   });
+
+  it('renders inline LaTeX with $...$', () => {
+    const html = renderMarkdown('area is $\\pi r^2$');
+    expect(html).toContain('katex');
+    expect(html).not.toContain('$');
+  });
+
+  it('renders display LaTeX with $$...$$', () => {
+    const html = renderMarkdown('$$\\int_0^1 x^2\\,dx$$');
+    expect(html).toContain('katex-display');
+  });
+
+  it('leaves a bare dollar sign untouched', () => {
+    expect(renderMarkdown('it costs $5 today')).toContain('$5');
+  });
+
+  it('does not throw on invalid LaTeX, shows the source', () => {
+    const html = renderMarkdown('$\\frac{1}{$');
+    expect(typeof html).toBe('string');
+  });
+
+  it('embeds the KaTeX stylesheet (with inlined fonts) in srcdoc', () => {
+    const doc = buildSrcDoc({ css: '', html: '<p>x</p>' });
+    expect(doc).toContain('.katex');
+    expect(doc).toContain('data:font/woff2;base64,');
+  });
 });

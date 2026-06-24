@@ -2,7 +2,17 @@
 
 An Anki-style note app: each note is a flippable card (front/back) rendered from
 a user-defined note type (named fields + HTML templates + CSS). Markdown field
-content, nested boxes, content search. Web app first; SQLite storage.
+content with LaTeX math, nested decks, content search. Web app first; SQLite
+storage.
+
+## Writing notes
+
+- **Markdown** in every field (bold, lists, links, etc.).
+- **LaTeX math** via KaTeX: inline with `$...$`, display with `$$...$$`
+  (e.g. `area is $\pi r^2$`). Invalid LaTeX renders as its source instead of
+  breaking the card. Math is rendered into the card's sandboxed iframe with
+  fonts inlined, so it works fully offline.
+- Cards are organized into nested **decks**; each card lives in one deck.
 
 ## Requirements
 

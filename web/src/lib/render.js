@@ -1,6 +1,10 @@
 import MarkdownIt from 'markdown-it';
+import katexPlugin from '@vscode/markdown-it-katex';
+import { katexCss } from './katex-css.js';
 
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+// throwOnError:false → invalid LaTeX renders as the source string, not a crash.
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
+  .use(katexPlugin.default ?? katexPlugin, { throwOnError: false });
 
 export function renderMarkdown(text) {
   return md.render(text ?? '');
@@ -25,6 +29,7 @@ export function renderCardSides({ template, values }) {
 export function buildSrcDoc({ css, html }) {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
+  ${katexCss}
   html,body{margin:0}
   .card{padding:20px;font-family:system-ui,sans-serif;cursor:pointer}
   ${css}
