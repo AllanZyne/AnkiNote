@@ -9,10 +9,10 @@ const json = (method, body) => ({
 });
 
 export const api = {
-  listBoxes: () => req('/api/boxes'),
-  createBox: (b) => req('/api/boxes', json('POST', b)),
-  renameBox: (id, name) => req(`/api/boxes/${id}`, json('PATCH', { name })),
-  deleteBox: (id) => req(`/api/boxes/${id}`, { method: 'DELETE' }),
+  listDecks: () => req('/api/decks'),
+  createDeck: (d) => req('/api/decks', json('POST', d)),
+  renameDeck: (id, name) => req(`/api/decks/${id}`, json('PATCH', { name })),
+  deleteDeck: (id) => req(`/api/decks/${id}`, { method: 'DELETE' }),
 
   listNoteTypes: () => req('/api/note-types'),
   getNoteType: (id) => req(`/api/note-types/${id}`),
@@ -20,7 +20,7 @@ export const api = {
   updateNoteType: (id, nt) => req(`/api/note-types/${id}`, json('PUT', nt)),
   deleteNoteType: (id) => req(`/api/note-types/${id}`, { method: 'DELETE' }),
 
-  listNotesInBox: (boxId) => req(`/api/notes?box=${boxId}`),
+  listNotesInDeck: (deckId) => req(`/api/notes?deck=${deckId}`),
   searchNotes: (q) => req(`/api/notes?q=${encodeURIComponent(q)}`),
   getNote: (id) => req(`/api/notes/${id}`),
   createNote: (n) => req('/api/notes', json('POST', n)),

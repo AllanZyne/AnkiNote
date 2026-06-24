@@ -8,7 +8,7 @@ const noteType = {
   templates: [{ id: 1, frontHtml: '{{Front}}', backHtml: '{{Front}}' }],
 };
 const notes = [
-  { id: 10, noteTypeId: 1, boxId: 1, values: { Front: 'hello' }, cardIds: [1] },
+  { id: 10, noteTypeId: 1, deckId: 1, values: { Front: 'hello' }, cardIds: [1] },
 ];
 
 describe('BrowseView', () => {

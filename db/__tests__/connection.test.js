@@ -8,7 +8,7 @@ describe('openDb', () => {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     ).all().map(r => r.name);
     expect(rows).toEqual(
-      ['box', 'card', 'card_template', 'field', 'field_value', 'note', 'note_type']
+      ['card', 'card_template', 'deck', 'field', 'field_value', 'note', 'note_type']
     );
   });
 

@@ -1,40 +1,40 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
-import BoxTree from './components/BoxTree.jsx';
+import DeckTree from './components/DeckTree.jsx';
 import BrowseView from './components/BrowseView.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
 import NoteTypeManager from './components/NoteTypeManager.jsx';
 
 export default function App() {
-  const [boxes, setBoxes] = useState([]);
+  const [decks, setDecks] = useState([]);
   const [noteTypes, setNoteTypes] = useState([]);
-  const [activeBox, setActiveBox] = useState(null);
+  const [activeDeck, setActiveDeck] = useState(null);
   const [notes, setNotes] = useState([]);
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState(null); // {kind, ...}
 
   const noteTypesById = Object.fromEntries(noteTypes.map(nt => [nt.id, nt]));
 
-  const refreshBoxes = useCallback(async () => setBoxes(await api.listBoxes()), []);
+  const refreshDecks = useCallback(async () => setDecks(await api.listDecks()), []);
   const refreshNoteTypes = useCallback(async () => setNoteTypes(await api.listNoteTypes()), []);
 
   const refreshNotes = useCallback(async () => {
     if (query.trim()) setNotes(await api.searchNotes(query));
-    else if (activeBox) setNotes(await api.listNotesInBox(activeBox));
+    else if (activeDeck) setNotes(await api.listNotesInDeck(activeDeck));
     else setNotes([]);
-  }, [query, activeBox]);
+  }, [query, activeDeck]);
 
-  useEffect(() => { refreshBoxes(); refreshNoteTypes(); }, [refreshBoxes, refreshNoteTypes]);
+  useEffect(() => { refreshDecks(); refreshNoteTypes(); }, [refreshDecks, refreshNoteTypes]);
   useEffect(() => { refreshNotes(); }, [refreshNotes]);
 
-  const addBox = async () => {
-    const name = prompt('Box name:');
-    if (name) { await api.createBox({ name, parentId: activeBox }); refreshBoxes(); }
+  const addDeck = async () => {
+    const name = prompt('Deck name:');
+    if (name) { await api.createDeck({ name, parentId: activeDeck }); refreshDecks(); }
   };
 
   const saveNote = async (values) => {
     if (modal.note) await api.updateNote(modal.note.id, { values });
-    else await api.createNote({ noteTypeId: modal.noteType.id, boxId: activeBox, values });
+    else await api.createNote({ noteTypeId: modal.noteType.id, deckId: activeDeck, values });
     setModal(null); refreshNotes();
   };
 
@@ -45,7 +45,7 @@ export default function App() {
   };
 
   const startNewNote = () => {
-    if (!activeBox) return alert('Select a box first.');
+    if (!activeDeck) return alert('Select a deck first.');
     if (!noteTypes.length) return alert('Create a note type first.');
     setModal({ kind: 'note', noteType: noteTypes[0], note: null });
   };
@@ -60,10 +60,10 @@ export default function App() {
     <div className="app">
       <div className="sidebar">
         <div className="toolbar">
-          <strong>Boxes</strong>
-          <button onClick={addBox}>+</button>
+          <strong>Decks</strong>
+          <button onClick={addDeck}>+</button>
         </div>
-        <BoxTree boxes={boxes} activeId={activeBox} onSelect={setActiveBox} />
+        <DeckTree decks={decks} activeId={activeDeck} onSelect={setActiveDeck} />
         <hr />
         <button onClick={() => setModal({ kind: 'noteType', noteType: null })}>
           Manage note types

@@ -14,7 +14,7 @@ function loadValues(db, noteId) {
 
 export function getNote(db, id) {
   const note = db.prepare(
-    'SELECT id, note_type_id AS noteTypeId, box_id AS boxId, created, modified FROM note WHERE id = ?'
+    'SELECT id, note_type_id AS noteTypeId, deck_id AS deckId, created, modified FROM note WHERE id = ?'
   ).get(id);
   if (!note) return undefined;
   note.values = loadValues(db, id);
@@ -22,12 +22,12 @@ export function getNote(db, id) {
   return note;
 }
 
-export function createNote(db, { noteTypeId, boxId, values }) {
+export function createNote(db, { noteTypeId, deckId, values }) {
   const now = new Date().toISOString();
   const tx = db.transaction(() => {
     const info = db.prepare(
-      'INSERT INTO note (note_type_id, box_id, created, modified) VALUES (?, ?, ?, ?)'
-    ).run(noteTypeId, boxId, now, now);
+      'INSERT INTO note (note_type_id, deck_id, created, modified) VALUES (?, ?, ?, ?)'
+    ).run(noteTypeId, deckId, now, now);
     const noteId = info.lastInsertRowid;
     const fields = fieldMap(db, noteTypeId);
     const fvStmt = db.prepare('INSERT INTO field_value (note_id, field_id, value_md) VALUES (?, ?, ?)');
@@ -42,15 +42,15 @@ export function createNote(db, { noteTypeId, boxId, values }) {
   return getNote(db, tx());
 }
 
-export function listNotesInBox(db, boxId) {
-  return db.prepare('SELECT id FROM note WHERE box_id = ? ORDER BY id DESC')
-    .all(boxId).map(r => getNote(db, r.id));
+export function listNotesInDeck(db, deckId) {
+  return db.prepare('SELECT id FROM note WHERE deck_id = ? ORDER BY id DESC')
+    .all(deckId).map(r => getNote(db, r.id));
 }
 
-export function updateNote(db, id, { boxId, values }) {
+export function updateNote(db, id, { deckId, values }) {
   const now = new Date().toISOString();
   const tx = db.transaction(() => {
-    if (boxId != null) db.prepare('UPDATE note SET box_id = ? WHERE id = ?').run(boxId, id);
+    if (deckId != null) db.prepare('UPDATE note SET deck_id = ? WHERE id = ?').run(deckId, id);
     if (values) {
       const note = db.prepare('SELECT note_type_id AS ntid FROM note WHERE id = ?').get(id);
       const fields = fieldMap(db, note.ntid);

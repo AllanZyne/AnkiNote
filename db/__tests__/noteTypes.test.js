@@ -3,7 +3,7 @@ import { openDb } from '../connection.js';
 import {
   createNoteType, getNoteType, listNoteTypes, updateNoteType, deleteNoteType
 } from '../noteTypes.js';
-import { createBox } from '../boxes.js';
+import { createDeck } from '../decks.js';
 import { createNote, getNote, updateNote } from '../notes.js';
 
 let db;
@@ -45,8 +45,8 @@ describe('note types', () => {
 
   it('refuses to delete a note type in use', () => {
     const nt = createNoteType(db, basic);
-    const box = createBox(db, { name: 'B' });
-    createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'a', Back: 'b' } });
+    const deck = createDeck(db, { name: 'B' });
+    createNote(db, { noteTypeId: nt.id, deckId: deck.id, values: { Front: 'a', Back: 'b' } });
     expect(() => deleteNoteType(db, nt.id)).toThrow('note type in use');
   });
 
@@ -58,8 +58,8 @@ describe('note types', () => {
 
   it('preserves note field values when updating note type css only', () => {
     const nt = createNoteType(db, basic);
-    const box = createBox(db, { name: 'B' });
-    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+    const deck = createDeck(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, deckId: deck.id, values: { Front: 'hola', Back: 'hello' } });
     const originalCardCount = note.cardIds.length;
 
     updateNoteType(db, nt.id, {
@@ -76,8 +76,8 @@ describe('note types', () => {
 
   it('adds empty field value for new field on existing notes', () => {
     const nt = createNoteType(db, basic);
-    const box = createBox(db, { name: 'B' });
-    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+    const deck = createDeck(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, deckId: deck.id, values: { Front: 'hola', Back: 'hello' } });
 
     updateNoteType(db, nt.id, {
       name: 'Basic',
@@ -95,8 +95,8 @@ describe('note types', () => {
 
   it('removes field value when field is deleted but preserves others', () => {
     const nt = createNoteType(db, basic);
-    const box = createBox(db, { name: 'B' });
-    const note = createNote(db, { noteTypeId: nt.id, boxId: box.id, values: { Front: 'hola', Back: 'hello' } });
+    const deck = createDeck(db, { name: 'B' });
+    const note = createNote(db, { noteTypeId: nt.id, deckId: deck.id, values: { Front: 'hola', Back: 'hello' } });
 
     updateNoteType(db, nt.id, {
       name: 'Basic',

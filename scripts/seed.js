@@ -1,6 +1,6 @@
 import { openDb } from '../db/connection.js';
 import { createNoteType, listNoteTypes } from '../db/noteTypes.js';
-import { createBox } from '../db/boxes.js';
+import { createDeck } from '../db/decks.js';
 import { createNote } from '../db/notes.js';
 
 const db = openDb(process.env.ANKINOTE_DB || 'ankinote.db');
@@ -12,12 +12,15 @@ if (listNoteTypes(db).length === 0) {
     fields: [{ name: 'Front' }, { name: 'Back' }],
     templates: [{ name: 'Card 1', frontHtml: '{{Front}}', backHtml: '{{Front}}\n<hr>\n{{Back}}' }],
   });
-  const spanish = createBox(db, { name: 'Spanish' });
-  const verbs = createBox(db, { name: 'Verbs', parentId: spanish.id });
-  createNote(db, { noteTypeId: basic.id, boxId: spanish.id,
+  const spanish = createDeck(db, { name: 'Spanish' });
+  const verbs = createDeck(db, { name: 'Verbs', parentId: spanish.id });
+  const math = createDeck(db, { name: 'Math' });
+  createNote(db, { noteTypeId: basic.id, deckId: spanish.id,
     values: { Front: '**hola**', Back: 'hello' } });
-  createNote(db, { noteTypeId: basic.id, boxId: verbs.id,
+  createNote(db, { noteTypeId: basic.id, deckId: verbs.id,
     values: { Front: 'comer', Back: 'to eat' } });
+  createNote(db, { noteTypeId: basic.id, deckId: math.id,
+    values: { Front: 'Area of a circle of radius $r$?', Back: '$$A = \\pi r^2$$' } });
   console.log('Seeded demo data.');
 } else {
   console.log('Database already has data; skipping seed.');
