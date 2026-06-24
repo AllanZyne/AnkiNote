@@ -51,4 +51,20 @@ describe('DeckMenu', () => {
     fireEvent.click(screen.getByText('Delete'));
     expect(h.onDelete).toHaveBeenCalledWith(base);
   });
+
+  it('closes when clicking outside the menu', () => {
+    setup();
+    fireEvent.click(screen.getByLabelText('Deck menu'));
+    expect(screen.getByText('Rename')).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText('Rename')).toBeNull();
+  });
+
+  it('does not close when clicking inside the menu container', () => {
+    setup();
+    fireEvent.click(screen.getByLabelText('Deck menu'));
+    fireEvent.mouseDown(screen.getByText('Rename'));
+    // mousedown inside should not close before the click action fires
+    expect(screen.getByText('Rename')).toBeTruthy();
+  });
 });
