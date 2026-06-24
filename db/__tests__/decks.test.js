@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDb } from '../connection.js';
-import { createDeck, listDecks, renameDeck, deleteDeck, setDeckPinned, setDeckArchived, validateDeckPath } from '../decks.js';
+import { createDeck, listDecks, deleteDeck, setDeckPinned, setDeckArchived, validateDeckPath } from '../decks.js';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -9,37 +9,38 @@ let db;
 beforeEach(() => { db = openDb(':memory:'); });
 
 describe('decks', () => {
-  it('creates a top-level deck', () => {
+  it('creates a top-level deck with default flags', () => {
     const deck = createDeck(db, { name: 'Spanish' });
-    expect(deck).toEqual({ id: expect.any(Number), name: 'Spanish', parentId: null, pinned: false, archived: false });
+    expect(deck).toMatchObject({ name: 'Spanish', pinned: false, archived: false });
+    expect(deck.id).toEqual(expect.any(Number));
   });
 
-  it('creates a nested deck and lists all', () => {
-    const parent = createDeck(db, { name: 'Lang' });
-    createDeck(db, { name: 'Verbs', parentId: parent.id });
-    const all = listDecks(db);
-    expect(all).toHaveLength(2);
-    expect(all.find(d => d.name === 'Verbs').parentId).toBe(parent.id);
+  it('auto-creates missing ancestors', () => {
+    createDeck(db, { name: 'A::B::C' });
+    expect(listDecks(db).map(d => d.name).sort()).toEqual(['A', 'A::B', 'A::B::C']);
   });
 
-  it('renames a deck', () => {
-    const deck = createDeck(db, { name: 'Old' });
-    renameDeck(db, deck.id, 'New');
-    expect(listDecks(db)[0].name).toBe('New');
+  it('does not duplicate an existing ancestor', () => {
+    createDeck(db, { name: 'A' });
+    createDeck(db, { name: 'A::B' });
+    expect(listDecks(db).filter(d => d.name === 'A')).toHaveLength(1);
   });
 
-  it('deletes a deck and cascades to children', () => {
-    const parent = createDeck(db, { name: 'Lang' });
-    createDeck(db, { name: 'Verbs', parentId: parent.id });
-    deleteDeck(db, parent.id);
-    expect(listDecks(db)).toHaveLength(0);
+  it('rejects creating a duplicate deck', () => {
+    createDeck(db, { name: 'Spanish' });
+    expect(() => createDeck(db, { name: 'Spanish' })).toThrow('deck exists');
   });
 
-  it('defaults pinned and archived to false on create', () => {
-    const deck = createDeck(db, { name: 'New' });
-    expect(deck.pinned).toBe(false);
-    expect(deck.archived).toBe(false);
-    expect(listDecks(db)[0]).toMatchObject({ pinned: false, archived: false });
+  it('rejects an invalid deck name', () => {
+    expect(() => createDeck(db, { name: 'A::' })).toThrow('invalid deck name');
+  });
+
+  it('deletes a deck and its prefix descendants', () => {
+    createDeck(db, { name: 'A::B::C' });
+    createDeck(db, { name: 'A::X' });
+    const ab = listDecks(db).find(d => d.name === 'A::B');
+    deleteDeck(db, ab.id);
+    expect(listDecks(db).map(d => d.name).sort()).toEqual(['A', 'A::X']);
   });
 
   it('sets and clears the pinned flag', () => {

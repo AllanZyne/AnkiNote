@@ -7,21 +7,43 @@ export function validateDeckPath(name) {
   return { valid: true, normalized: segments.join('::') };
 }
 
-export function createDeck(db, { name, parentId = null }) {
-  const info = db.prepare(
-    'INSERT INTO deck (name, parent_id) VALUES (?, ?)'
-  ).run(name, parentId);
-  return { id: info.lastInsertRowid, name, parentId, pinned: false, archived: false };
+function deckByName(db, name) {
+  return db.prepare('SELECT id, name, pinned, archived FROM deck WHERE name = ?').get(name);
+}
+
+function ancestorPaths(name) {
+  const segs = name.split('::');
+  const paths = [];
+  for (let i = 1; i < segs.length; i++) paths.push(segs.slice(0, i).join('::'));
+  return paths;
+}
+
+export function createDeck(db, { name }) {
+  const v = validateDeckPath(name);
+  if (!v.valid) throw new Error('invalid deck name');
+  const path = v.normalized;
+  return db.transaction(() => {
+    if (deckByName(db, path)) throw new Error('deck exists');
+    const ins = db.prepare('INSERT INTO deck (name) VALUES (?)');
+    for (const anc of ancestorPaths(path)) {
+      if (!deckByName(db, anc)) ins.run(anc);
+    }
+    const id = ins.run(path).lastInsertRowid;
+    return { id, name: path, pinned: false, archived: false };
+  })();
 }
 
 export function listDecks(db) {
-  return db.prepare(
-    'SELECT id, name, pinned, archived FROM deck ORDER BY name'
-  ).all().map(d => ({ ...d, pinned: !!d.pinned, archived: !!d.archived }));
+  return db.prepare('SELECT id, name, pinned, archived FROM deck ORDER BY name')
+    .all().map(d => ({ ...d, pinned: !!d.pinned, archived: !!d.archived }));
 }
 
-export function renameDeck(db, id, name) {
-  db.prepare('UPDATE deck SET name = ? WHERE id = ?').run(name, id);
+export function deleteDeck(db, id) {
+  const deck = db.prepare('SELECT name FROM deck WHERE id = ?').get(id);
+  if (!deck) return;
+  db.transaction(() => {
+    db.prepare('DELETE FROM deck WHERE name = ? OR name LIKE ?').run(deck.name, `${deck.name}::%`);
+  })();
 }
 
 export function setDeckPinned(db, id, pinned) {
@@ -30,8 +52,4 @@ export function setDeckPinned(db, id, pinned) {
 
 export function setDeckArchived(db, id, archived) {
   db.prepare('UPDATE deck SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
-}
-
-export function deleteDeck(db, id) {
-  db.prepare('DELETE FROM deck WHERE id = ?').run(id);
 }
