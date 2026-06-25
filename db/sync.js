@@ -27,15 +27,65 @@ function upsertNoteType(db, id, ts, p) {
   const exists = db.prepare('SELECT 1 FROM note_type WHERE id = ?').get(id);
   if (exists) {
     db.prepare('UPDATE note_type SET name = ?, css = ?, deleted = 0, updated_at = ? WHERE id = ?').run(p.name, p.css ?? '', ts, id);
-    db.prepare('DELETE FROM field WHERE note_type_id = ?').run(id);
-    db.prepare('DELETE FROM card_template WHERE note_type_id = ?').run(id);
+
+    // Reconcile fields by name (preserves stable ids, avoiding CASCADE delete of field_values)
+    const existingFields = db.prepare('SELECT id, name, ord FROM field WHERE note_type_id = ?').all(id);
+    const existingFieldsByName = new Map(existingFields.map(f => [f.name, f]));
+    const incomingFieldNames = new Set((p.fields ?? []).map(f => f.name));
+
+    (p.fields ?? []).forEach((f, i) => {
+      const existing = existingFieldsByName.get(f.name);
+      if (existing) {
+        db.prepare('UPDATE field SET ord = ? WHERE id = ?').run(i, existing.id);
+      } else {
+        const newFieldId = cryptoId();
+        db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)').run(newFieldId, id, f.name, i);
+        // Backfill empty value for all existing notes of this type
+        const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
+        const insertValue = db.prepare('INSERT INTO field_value (id, note_id, field_id, value_md) VALUES (?, ?, ?, ?)');
+        noteIds.forEach(n => insertValue.run(cryptoId(), n.id, newFieldId, ''));
+      }
+    });
+
+    existingFields.forEach(f => {
+      if (!incomingFieldNames.has(f.name)) {
+        db.prepare('DELETE FROM field WHERE id = ?').run(f.id);
+      }
+    });
+
+    // Reconcile card_templates by name (preserves stable ids, avoiding CASCADE delete of cards)
+    const existingTemplates = db.prepare('SELECT id, name FROM card_template WHERE note_type_id = ?').all(id);
+    const existingTemplatesByName = new Map(existingTemplates.map(t => [t.name, t]));
+    const incomingTemplateNames = new Set((p.templates ?? []).map(t => t.name));
+
+    (p.templates ?? []).forEach((t, i) => {
+      const existing = existingTemplatesByName.get(t.name);
+      if (existing) {
+        db.prepare('UPDATE card_template SET front_html = ?, back_html = ?, ord = ? WHERE id = ?')
+          .run(t.frontHtml ?? '', t.backHtml ?? '', i, existing.id);
+      } else {
+        const newTemplateId = cryptoId();
+        db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(newTemplateId, id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i);
+        // Backfill a card for each existing note of this type
+        const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
+        const insertCard = db.prepare('INSERT INTO card (id, note_id, card_template_id) VALUES (?, ?, ?)');
+        noteIds.forEach(n => insertCard.run(cryptoId(), n.id, newTemplateId));
+      }
+    });
+
+    existingTemplates.forEach(t => {
+      if (!incomingTemplateNames.has(t.name)) {
+        db.prepare('DELETE FROM card_template WHERE id = ?').run(t.id);
+      }
+    });
   } else {
     db.prepare('INSERT INTO note_type (id, name, css, deleted, updated_at) VALUES (?, ?, ?, 0, ?)').run(id, p.name, p.css ?? '', ts);
+    const fStmt = db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)');
+    (p.fields ?? []).forEach((f, i) => fStmt.run(f.id ?? cryptoId(), id, f.name, i));
+    const tStmt = db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)');
+    (p.templates ?? []).forEach((t, i) => tStmt.run(t.id ?? cryptoId(), id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
   }
-  const fStmt = db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)');
-  (p.fields ?? []).forEach((f, i) => fStmt.run(f.id ?? cryptoId(), id, f.name, i));
-  const tStmt = db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)');
-  (p.templates ?? []).forEach((t, i) => tStmt.run(t.id ?? cryptoId(), id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
 }
 
 function upsertNote(db, id, ts, p) {
@@ -71,9 +121,19 @@ export function pushOps(db, ops) {
       if (!wins(op.updatedAt, storedUpdatedAt(db, table, op.id))) continue;
       if (op.type === 'delete') {
         const exists = db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(op.id);
-        if (exists) db.prepare(`UPDATE ${table} SET deleted = 1, updated_at = ? WHERE id = ?`).run(op.updatedAt, op.id);
-        else db.prepare(`INSERT INTO ${table} (id, ${table === 'deck' ? 'name' : table === 'note_type' ? 'name' : 'note_type_id'}, deleted, updated_at) VALUES (?, ?, 1, ?)`)
-          .run(op.id, table === 'note' ? (op.payload?.noteTypeId ?? '') : '', op.updatedAt);
+        if (exists) {
+          db.prepare(`UPDATE ${table} SET deleted = 1, updated_at = ? WHERE id = ?`).run(op.updatedAt, op.id);
+        } else {
+          // Insert valid tombstones for unknown-id deletes
+          if (table === 'deck') {
+            db.prepare('INSERT INTO deck (id, name, deleted, updated_at) VALUES (?, ?, 1, ?)')
+              .run(op.id, '__deleted__' + op.id, op.updatedAt);
+          } else if (table === 'note_type') {
+            db.prepare('INSERT INTO note_type (id, name, deleted, updated_at) VALUES (?, ?, 1, ?)')
+              .run(op.id, '', op.updatedAt);
+          }
+          // Note: skip tombstone for unknown note (client already deleted it; no FK-valid row possible)
+        }
       } else {
         UPSERT[op.entity](db, op.id, op.updatedAt, op.payload ?? {});
       }

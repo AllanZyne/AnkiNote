@@ -50,4 +50,57 @@ describe('sync', () => {
     const note = pulled.notes.find(n => n.id === noteId);
     expect(note.values).toEqual({ Front: 'hola' });
   });
+
+  // Bug 1 regression test: note_type re-push preserves note values
+  it('note_type re-push preserves existing note values', () => {
+    const ntId = newId(), deckId = newId(), noteId = newId();
+    const t1 = '2026-06-25T10:00:00.000+00:00';
+    pushOps(db, [
+      { entity: 'note_type', id: ntId, type: 'upsert', updatedAt: t1, payload: { name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] } },
+      { entity: 'deck', id: deckId, type: 'upsert', updatedAt: t1, payload: { name: 'D', pinned: false, archived: false } },
+      { entity: 'note', id: noteId, type: 'upsert', updatedAt: t1, payload: { noteTypeId: ntId, deckId, created: t1, values: { Front: 'hola' } } },
+    ]);
+    const t2 = '2026-06-25T11:00:00.000+00:00';
+    pushOps(db, [
+      { entity: 'note_type', id: ntId, type: 'upsert', updatedAt: t2, payload: { name: 'Basic', css: 'body { color: red; }', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] } }
+    ]);
+    const note = pullSince(db, null).notes.find(n => n.id === noteId);
+    expect(note.values).toEqual({ Front: 'hola' });
+  });
+
+  it('adding field via note_type re-push backfills empty value for existing notes', () => {
+    const ntId = newId(), deckId = newId(), noteId = newId();
+    const t1 = '2026-06-25T10:00:00.000+00:00';
+    pushOps(db, [
+      { entity: 'note_type', id: ntId, type: 'upsert', updatedAt: t1, payload: { name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] } },
+      { entity: 'deck', id: deckId, type: 'upsert', updatedAt: t1, payload: { name: 'D', pinned: false, archived: false } },
+      { entity: 'note', id: noteId, type: 'upsert', updatedAt: t1, payload: { noteTypeId: ntId, deckId, created: t1, values: { Front: 'hola' } } },
+    ]);
+    const t2 = '2026-06-25T11:00:00.000+00:00';
+    pushOps(db, [
+      { entity: 'note_type', id: ntId, type: 'upsert', updatedAt: t2, payload: { name: 'Basic', css: '', fields: [{ name: 'Front' }, { name: 'Back' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '{{Back}}' }] } }
+    ]);
+    const note = pullSince(db, null).notes.find(n => n.id === noteId);
+    expect(note.values).toEqual({ Front: 'hola', Back: '' });
+  });
+
+  // Bug 2 regression test: delete unknown note doesn't throw
+  it('delete of unknown note id does not throw', () => {
+    const unknownId = newId();
+    expect(() => {
+      pushOps(db, [
+        { entity: 'note', id: unknownId, type: 'delete', updatedAt: '2026-06-25T10:00:00.000+00:00' }
+      ]);
+    }).not.toThrow();
+  });
+
+  // Bug 3 regression test: two unknown deck deletes don't throw
+  it('two unknown deck deletes in one batch do not throw', () => {
+    expect(() => {
+      pushOps(db, [
+        { entity: 'deck', id: newId(), type: 'delete', updatedAt: '2026-06-25T10:00:00.000+00:00' },
+        { entity: 'deck', id: newId(), type: 'delete', updatedAt: '2026-06-25T10:01:00.000+00:00' }
+      ]);
+    }).not.toThrow();
+  });
 });
