@@ -23,3 +23,8 @@ button { padding: 6px 12px; cursor: pointer; }
 .field-row { margin-bottom: 10px; display: flex; flex-direction: column; }
 textarea { font-family: ui-monospace, monospace; padding: 6px; }
 .preview-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sync-status { margin-left: auto; font-size: 13px; padding: 4px 10px; border-radius: 12px; background: #eef; }
+.sync-synced { background: #e3f4e3; color: #1a6e1a; }
+.sync-syncing { background: #eef2ff; color: #2a4bd0; }
+.sync-offline { background: #f4f0e3; color: #8a6d00; }
+.sync-error { background: #fbe3e3; color: #b00; }
