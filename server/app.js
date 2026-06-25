@@ -2,13 +2,15 @@ import express from 'express';
 import { decksRouter } from './routes/decks.js';
 import { noteTypesRouter } from './routes/noteTypes.js';
 import { notesRouter } from './routes/notes.js';
+import { syncRouter } from './routes/sync.js';
 
 export function buildApp(db) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '5mb' }));
   app.use('/api/decks', decksRouter(db));
   app.use('/api/note-types', noteTypesRouter(db));
   app.use('/api/notes', notesRouter(db));
+  app.use('/api/sync', syncRouter(db));
 
   app.use((err, req, res, next) => {
     if (err.code?.startsWith('SQLITE_CONSTRAINT')) {
