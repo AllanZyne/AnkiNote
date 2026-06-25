@@ -26,8 +26,9 @@ function ancestorPaths(name) {
 
 function insertDeck(db, name) {
   const id = newId();
-  db.prepare('INSERT INTO deck (id, name, updated_at) VALUES (?, ?, ?)').run(id, name, nowIso());
-  return id;
+  const updatedAt = nowIso();
+  db.prepare('INSERT INTO deck (id, name, updated_at) VALUES (?, ?, ?)').run(id, name, updatedAt);
+  return { id, updatedAt };
 }
 
 export function createDeck(db, { name }) {
@@ -39,8 +40,8 @@ export function createDeck(db, { name }) {
     for (const anc of ancestorPaths(path)) {
       if (!deckByName(db, anc)) insertDeck(db, anc);
     }
-    const id = insertDeck(db, path);
-    return { id, name: path, pinned: false, archived: false, updatedAt: db.prepare('SELECT updated_at AS u FROM deck WHERE id = ?').get(id).u };
+    const { id, updatedAt } = insertDeck(db, path);
+    return { id, name: path, pinned: false, archived: false, updatedAt };
   })();
 }
 
@@ -54,7 +55,7 @@ export function deleteDeck(db, id) {
   if (!deck) return;
   const ts = nowIso();
   db.transaction(() => {
-    db.prepare("UPDATE deck SET deleted = 1, updated_at = ? WHERE name = ? OR name LIKE ? ESCAPE '\\'")
+    db.prepare("UPDATE deck SET name = '__deleted__' || id, deleted = 1, updated_at = ? WHERE name = ? OR name LIKE ? ESCAPE '\\'")
       .run(ts, deck.name, likePrefix(deck.name));
   })();
 }
@@ -94,5 +95,3 @@ export function renameDeck(db, id, newName) {
     }
   })();
 }
-
-export { } ;

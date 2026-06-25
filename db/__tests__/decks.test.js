@@ -83,6 +83,38 @@ describe('decks', () => {
     expect(validateDeckPath('A::::B').valid).toBe(false);
     expect(validateDeckPath('   ').valid).toBe(false);
   });
+
+  it('allows recreating a deck after deletion (frees the name)', () => {
+    const d1 = createDeck(db, { name: 'Spanish' });
+    deleteDeck(db, d1.id);
+    const d2 = createDeck(db, { name: 'Spanish' });
+    const live = listDecks(db);
+    expect(live).toHaveLength(1);
+    expect(live[0].name).toBe('Spanish');
+    expect(live[0].id).toBe(d2.id);
+  });
+
+  it('allows recreating a parent deck after deletion (frees the name)', () => {
+    createDeck(db, { name: 'Parent::Child' });
+    const parent = listDecks(db).find(d => d.name === 'Parent');
+    deleteDeck(db, parent.id);
+    const d2 = createDeck(db, { name: 'Parent' });
+    const live = listDecks(db);
+    expect(live).toHaveLength(1);
+    expect(live[0].name).toBe('Parent');
+    expect(live[0].id).toBe(d2.id);
+  });
+
+  it('allows renaming onto a freed name (previously soft-deleted)', () => {
+    createDeck(db, { name: 'A' });
+    const b = createDeck(db, { name: 'B' });
+    deleteDeck(db, b.id);
+    const a = listDecks(db).find(d => d.name === 'A');
+    db.prepare('UPDATE deck SET name = ? WHERE id = ?').run('B', a.id);
+    const live = listDecks(db);
+    expect(live).toHaveLength(1);
+    expect(live[0].name).toBe('B');
+  });
 });
 
 // The legacy parent_id->path migration is superseded by the integer->UUID
