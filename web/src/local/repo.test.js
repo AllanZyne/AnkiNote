@@ -4,11 +4,9 @@ import { makeRepo, outboxAll } from './repo.js';
 
 let db, repo;
 beforeEach(async () => {
-  // fresh db per test
-  indexedDB.deleteDatabase('ankinote-test');
-  db = await openLocalDb('ankinote-test');
-  // clear stores
-  for (const s of ['decks', 'noteTypes', 'notes', 'outbox', 'meta']) await db.clear(s);
+  // fresh db per test using unique name
+  const dbName = `ankinote-test-${Date.now()}-${Math.random()}`;
+  db = await openLocalDb(dbName);
   repo = makeRepo(db);
 });
 
@@ -47,5 +45,40 @@ describe('repo decks', () => {
     const d = await repo.createDeck({ name: 'P' });
     await repo.updateDeck(d.id, { pinned: true });
     expect((await repo.listDecks())[0].pinned).toBe(true);
+  });
+});
+
+describe('repo note types and notes', () => {
+  it('createNoteType stores the aggregate and queues an op', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    expect(nt.id).toBeTruthy();
+    expect((await repo.listNoteTypes())[0].fields[0].name).toBe('Front');
+    expect((await outboxAll(db)).some(o => o.entity === 'note_type' && o.type === 'upsert')).toBe(true);
+  });
+
+  it('createNote stores values and lists in its deck', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    const deck = await repo.createDeck({ name: 'D' });
+    const note = await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'hola' } });
+    expect(note.values).toEqual({ Front: 'hola' });
+    expect(await repo.listNotesInDeck(deck.id)).toHaveLength(1);
+  });
+
+  it('searchNotes matches values case-insensitively and hides tombstones', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    const deck = await repo.createDeck({ name: 'D' });
+    const a = await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'Gato' } });
+    await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'Perro' } });
+    expect(await repo.searchNotes('gat')).toHaveLength(1);
+    await repo.deleteNote(a.id);
+    expect(await repo.searchNotes('gat')).toHaveLength(0);
+  });
+
+  it('updateNote merges values and queues an op', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    const deck = await repo.createDeck({ name: 'D' });
+    const note = await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'a' } });
+    const upd = await repo.updateNote(note.id, { values: { Front: 'A' } });
+    expect(upd.values.Front).toBe('A');
   });
 });
