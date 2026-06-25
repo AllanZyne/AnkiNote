@@ -1,11 +1,11 @@
 import { toInstant } from '../local/clock.js';
 
-const STORE = { deck: 'decks', note_type: 'noteTypes', note: 'notes' };
-
 export function makeSyncEngine({ db, fetchFn = fetch, intervalMs = 15000 }) {
   let status = { state: 'synced', pending: 0, lastSyncedAt: null };
   const subs = new Set();
   let timer = null;
+  let onlineHandler = null;
+  let inFlight = false;
 
   function set(partial) {
     status = { ...status, ...partial };
@@ -53,6 +53,8 @@ export function makeSyncEngine({ db, fetchFn = fetch, intervalMs = 15000 }) {
     subscribe(cb) { subs.add(cb); cb(status); return () => subs.delete(cb); },
     getStatus() { return status; },
     async syncOnce() {
+      if (inFlight) return;            // skip overlapping runs from interval/online triggers
+      inFlight = true;
       set({ state: 'syncing', pending: await pendingCount() });
       try {
         await push();
@@ -60,16 +62,22 @@ export function makeSyncEngine({ db, fetchFn = fetch, intervalMs = 15000 }) {
         set({ state: 'synced', pending: await pendingCount(), lastSyncedAt: serverTime });
       } catch (e) {
         set({ state: e.httpError ? 'error' : 'offline', pending: await pendingCount() });
+      } finally {
+        inFlight = false;
       }
     },
     start() {
       if (timer) return;
-      const tick = () => engine.syncOnce();
-      timer = setInterval(tick, intervalMs);
-      if (typeof window !== 'undefined') window.addEventListener('online', tick);
-      tick();
+      onlineHandler = () => engine.syncOnce();
+      timer = setInterval(onlineHandler, intervalMs);
+      if (typeof window !== 'undefined') window.addEventListener('online', onlineHandler);
+      onlineHandler();
     },
-    stop() { if (timer) { clearInterval(timer); timer = null; } },
+    stop() {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (onlineHandler && typeof window !== 'undefined') window.removeEventListener('online', onlineHandler);
+      onlineHandler = null;
+    },
   };
   return engine;
 }
