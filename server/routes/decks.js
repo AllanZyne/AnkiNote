@@ -17,7 +17,7 @@ export function decksRouter(db) {
     }
   });
   r.patch('/:id', (req, res) => {
-    const id = Number(req.params.id);
+    const id = req.params.id;
     const { name, pinned, archived } = req.body;
     const has = (v) => v !== undefined;
     if (!has(name) && !has(pinned) && !has(archived)) {
@@ -39,7 +39,7 @@ export function decksRouter(db) {
     res.json(listDecks(db).find(d => d.id === id));
   });
   r.delete('/:id', (req, res) => {
-    deleteDeck(db, Number(req.params.id));
+    deleteDeck(db, req.params.id);
     res.status(204).end();
   });
   return r;

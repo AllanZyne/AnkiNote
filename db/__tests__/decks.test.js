@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDb } from '../connection.js';
 import { createDeck, listDecks, deleteDeck, setDeckPinned, setDeckArchived, validateDeckPath } from '../decks.js';
-import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
 
 let db;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -88,28 +85,6 @@ describe('decks', () => {
   });
 });
 
-describe('deck table migration', () => {
-  const testDbPath = path.join(process.cwd(), `test-migration-${process.pid}.db`);
-  afterEach(() => { fs.rmSync(testDbPath, { force: true }); });
-
-  it.skip('migrates an old deck table (missing pinned/archived) when opening the database', () => {
-    // Create old-shape deck table (only id, name, parent_id)
-    const oldDb = new Database(testDbPath);
-    oldDb.exec(`
-      CREATE TABLE deck (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        parent_id INTEGER
-      );
-      INSERT INTO deck (name, parent_id) VALUES ('Spanish', NULL);
-    `);
-    oldDb.close();
-
-    // Open with openDb (should auto-migrate)
-    const migratedDb = openDb(testDbPath);
-    const decks = listDecks(migratedDb);
-    expect(decks).toHaveLength(1);
-    expect(decks[0]).toMatchObject({ name: 'Spanish', pinned: false, archived: false });
-    migratedDb.close();
-  });
-});
+// The legacy parent_id->path migration is superseded by the integer->UUID
+// rebuild; that path is covered comprehensively in migration-uuid.test.js
+// (all 7 tables migrate together, as a real legacy DB has them).
