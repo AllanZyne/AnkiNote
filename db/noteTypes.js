@@ -1,20 +1,22 @@
+import { newId, nowIso } from './ids.js';
+
 function insertFieldsAndTemplates(db, noteTypeId, fields, templates) {
   const fStmt = db.prepare(
-    'INSERT INTO field (note_type_id, name, ord) VALUES (?, ?, ?)'
+    'INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)'
   );
-  fields.forEach((f, i) => fStmt.run(noteTypeId, f.name, i));
+  fields.forEach((f, i) => fStmt.run(newId(), noteTypeId, f.name, i));
   const tStmt = db.prepare(
-    'INSERT INTO card_template (note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)'
   );
   templates.forEach((t, i) =>
-    tStmt.run(noteTypeId, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
+    tStmt.run(newId(), noteTypeId, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
 }
 
 export function createNoteType(db, { name, css = '', fields, templates }) {
   const tx = db.transaction(() => {
-    const info = db.prepare('INSERT INTO note_type (name, css) VALUES (?, ?)')
-      .run(name, css);
-    const id = info.lastInsertRowid;
+    const id = newId();
+    db.prepare('INSERT INTO note_type (id, name, css, updated_at) VALUES (?, ?, ?, ?)')
+      .run(id, name, css, nowIso());
     insertFieldsAndTemplates(db, id, fields, templates);
     return id;
   });
@@ -22,7 +24,7 @@ export function createNoteType(db, { name, css = '', fields, templates }) {
 }
 
 export function getNoteType(db, id) {
-  const nt = db.prepare('SELECT id, name, css FROM note_type WHERE id = ?').get(id);
+  const nt = db.prepare('SELECT id, name, css, updated_at AS updatedAt FROM note_type WHERE id = ? AND deleted = 0').get(id);
   if (!nt) return undefined;
   nt.fields = db.prepare(
     'SELECT id, name, ord FROM field WHERE note_type_id = ? ORDER BY ord'
@@ -34,7 +36,7 @@ export function getNoteType(db, id) {
 }
 
 export function listNoteTypes(db) {
-  return db.prepare('SELECT id FROM note_type ORDER BY name')
+  return db.prepare('SELECT id FROM note_type WHERE deleted = 0 ORDER BY name')
     .all().map(r => getNoteType(db, r.id));
 }
 
@@ -51,11 +53,11 @@ export function updateNoteType(db, id, { name, css = '', fields, templates }) {
       if (existing) {
         db.prepare('UPDATE field SET ord = ? WHERE id = ?').run(i, existing.id);
       } else {
-        const info = db.prepare('INSERT INTO field (note_type_id, name, ord) VALUES (?, ?, ?)').run(id, f.name, i);
-        const newFieldId = info.lastInsertRowid;
+        const newFieldId = newId();
+        db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)').run(newFieldId, id, f.name, i);
         const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
-        const insertValue = db.prepare('INSERT INTO field_value (note_id, field_id, value_md) VALUES (?, ?, ?)');
-        noteIds.forEach(n => insertValue.run(n.id, newFieldId, ''));
+        const insertValue = db.prepare('INSERT INTO field_value (id, note_id, field_id, value_md) VALUES (?, ?, ?, ?)');
+        noteIds.forEach(n => insertValue.run(newId(), n.id, newFieldId, ''));
       }
     });
 
@@ -75,12 +77,12 @@ export function updateNoteType(db, id, { name, css = '', fields, templates }) {
         db.prepare('UPDATE card_template SET front_html = ?, back_html = ?, ord = ? WHERE id = ?')
           .run(t.frontHtml ?? '', t.backHtml ?? '', i, existing.id);
       } else {
-        const info = db.prepare('INSERT INTO card_template (note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?)')
-          .run(id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i);
-        const newTemplateId = info.lastInsertRowid;
+        const newTemplateId = newId();
+        db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(newTemplateId, id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i);
         const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
-        const insertCard = db.prepare('INSERT INTO card (note_id, card_template_id) VALUES (?, ?)');
-        noteIds.forEach(n => insertCard.run(n.id, newTemplateId));
+        const insertCard = db.prepare('INSERT INTO card (id, note_id, card_template_id) VALUES (?, ?, ?)');
+        noteIds.forEach(n => insertCard.run(newId(), n.id, newTemplateId));
       }
     });
 
@@ -89,13 +91,14 @@ export function updateNoteType(db, id, { name, css = '', fields, templates }) {
         db.prepare('DELETE FROM card_template WHERE id = ?').run(t.id);
       }
     });
+    db.prepare('UPDATE note_type SET updated_at = ? WHERE id = ?').run(nowIso(), id);
   });
   tx();
   return getNoteType(db, id);
 }
 
 export function deleteNoteType(db, id) {
-  const inUse = db.prepare('SELECT 1 FROM note WHERE note_type_id = ? LIMIT 1').get(id);
+  const inUse = db.prepare('SELECT 1 FROM note WHERE note_type_id = ? AND deleted = 0 LIMIT 1').get(id);
   if (inUse) throw new Error('note type in use');
-  db.prepare('DELETE FROM note_type WHERE id = ?').run(id);
+  db.prepare('UPDATE note_type SET deleted = 1, updated_at = ? WHERE id = ?').run(nowIso(), id);
 }

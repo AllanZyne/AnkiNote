@@ -25,6 +25,8 @@ describe('notes', () => {
     expect(note.values).toEqual({ Front: 'hola', Back: 'hello' });
     expect(note.cardIds).toHaveLength(1);
     expect(note.created).toBeTruthy();
+    expect(note.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(note.updatedAt).toMatch(/[+-]\d{2}:\d{2}$/);
   });
 
   it('lists notes in a deck', () => {
@@ -38,11 +40,11 @@ describe('notes', () => {
     expect(updated.values.Front).toBe('A');
   });
 
-  it('deletes a note and its cards', () => {
+  it('soft-deletes a note (getNote returns undefined, card remains)', () => {
     const note = createNote(db, { noteTypeId: nt.id, deckId: deck.id, values: { Front: 'a', Back: 'b' } });
     deleteNote(db, note.id);
     expect(getNote(db, note.id)).toBeUndefined();
-    expect(db.prepare('SELECT COUNT(*) c FROM card').get().c).toBe(0);
+    expect(db.prepare('SELECT deleted FROM note WHERE id = ?').get(note.id).deleted).toBe(1);
   });
 
   it('searches across field values case-insensitively', () => {

@@ -20,6 +20,8 @@ describe('note types', () => {
   it('creates and reads back a full note type', () => {
     const nt = createNoteType(db, basic);
     const got = getNoteType(db, nt.id);
+    expect(got.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(got.updatedAt).toMatch(/[+-]\d{2}:\d{2}$/);
     expect(got.name).toBe('Basic');
     expect(got.css).toBe('.card { font-size: 20px; }');
     expect(got.fields.map(f => f.name)).toEqual(['Front', 'Back']);

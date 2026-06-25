@@ -1,3 +1,5 @@
+import { newId, nowIso } from './ids.js';
+
 function likePrefix(name) {
   return name.replace(/[\\%_]/g, c => '\\' + c) + '::%';
 }
@@ -12,7 +14,7 @@ export function validateDeckPath(name) {
 }
 
 function deckByName(db, name) {
-  return db.prepare('SELECT id, name, pinned, archived FROM deck WHERE name = ?').get(name);
+  return db.prepare('SELECT id, name, pinned, archived FROM deck WHERE name = ? AND deleted = 0').get(name);
 }
 
 function ancestorPaths(name) {
@@ -22,70 +24,75 @@ function ancestorPaths(name) {
   return paths;
 }
 
+function insertDeck(db, name) {
+  const id = newId();
+  db.prepare('INSERT INTO deck (id, name, updated_at) VALUES (?, ?, ?)').run(id, name, nowIso());
+  return id;
+}
+
 export function createDeck(db, { name }) {
   const v = validateDeckPath(name);
   if (!v.valid) throw new Error('invalid deck name');
   const path = v.normalized;
   return db.transaction(() => {
     if (deckByName(db, path)) throw new Error('deck exists');
-    const ins = db.prepare('INSERT INTO deck (name) VALUES (?)');
     for (const anc of ancestorPaths(path)) {
-      if (!deckByName(db, anc)) ins.run(anc);
+      if (!deckByName(db, anc)) insertDeck(db, anc);
     }
-    const id = ins.run(path).lastInsertRowid;
-    return { id, name: path, pinned: false, archived: false };
+    const id = insertDeck(db, path);
+    return { id, name: path, pinned: false, archived: false, updatedAt: db.prepare('SELECT updated_at AS u FROM deck WHERE id = ?').get(id).u };
   })();
 }
 
 export function listDecks(db) {
-  return db.prepare('SELECT id, name, pinned, archived FROM deck ORDER BY name')
+  return db.prepare('SELECT id, name, pinned, archived, updated_at AS updatedAt FROM deck WHERE deleted = 0 ORDER BY name')
     .all().map(d => ({ ...d, pinned: !!d.pinned, archived: !!d.archived }));
 }
 
 export function deleteDeck(db, id) {
   const deck = db.prepare('SELECT name FROM deck WHERE id = ?').get(id);
   if (!deck) return;
+  const ts = nowIso();
   db.transaction(() => {
-    db.prepare("DELETE FROM deck WHERE name = ? OR name LIKE ? ESCAPE '\\'").run(deck.name, likePrefix(deck.name));
+    db.prepare("UPDATE deck SET deleted = 1, updated_at = ? WHERE name = ? OR name LIKE ? ESCAPE '\\'")
+      .run(ts, deck.name, likePrefix(deck.name));
   })();
 }
 
 export function setDeckPinned(db, id, pinned) {
-  db.prepare('UPDATE deck SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id);
+  db.prepare('UPDATE deck SET pinned = ?, updated_at = ? WHERE id = ?').run(pinned ? 1 : 0, nowIso(), id);
 }
 
 export function setDeckArchived(db, id, archived) {
-  db.prepare('UPDATE deck SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
+  db.prepare('UPDATE deck SET archived = ?, updated_at = ? WHERE id = ?').run(archived ? 1 : 0, nowIso(), id);
 }
 
 export function renameDeck(db, id, newName) {
   const v = validateDeckPath(newName);
   if (!v.valid) throw new Error('invalid deck name');
   const target = v.normalized;
-  const row = db.prepare('SELECT id, name FROM deck WHERE id = ?').get(id);
+  const row = db.prepare('SELECT id, name FROM deck WHERE id = ? AND deleted = 0').get(id);
   if (!row) throw new Error('deck not found');
   const oldName = row.name;
   if (target === oldName) return;
   if (target.startsWith(oldName + '::')) throw new Error('cannot move into own subtree');
-
+  const ts = nowIso();
   db.transaction(() => {
-    // Auto-create missing ancestors of the new name.
-    const insAnc = db.prepare('INSERT INTO deck (name) VALUES (?)');
     for (const anc of ancestorPaths(target)) {
-      if (!deckByName(db, anc)) insAnc.run(anc);
+      if (!deckByName(db, anc)) insertDeck(db, anc);
     }
-    // Rewrite the deck itself and all its prefix-descendants.
-    const affected = db.prepare("SELECT id, name FROM deck WHERE name = ? OR name LIKE ? ESCAPE '\\'")
+    const affected = db.prepare("SELECT id, name FROM deck WHERE deleted = 0 AND (name = ? OR name LIKE ? ESCAPE '\\')")
       .all(oldName, likePrefix(oldName));
     for (const a of affected) {
       const rewritten = target + a.name.slice(oldName.length);
-      const clash = db.prepare('SELECT id FROM deck WHERE name = ? AND id != ?').get(rewritten, a.id);
+      const clash = db.prepare('SELECT id FROM deck WHERE name = ? AND id != ? AND deleted = 0').get(rewritten, a.id);
       if (clash) {
-        // Merge: move the colliding row's notes to the surviving (renamed) row, drop the duplicate.
-        db.prepare('UPDATE note SET deck_id = ? WHERE deck_id = ?').run(a.id, clash.id);
-        db.prepare('DELETE FROM deck WHERE id = ?').run(clash.id);
+        db.prepare('UPDATE note SET deck_id = ?, updated_at = ? WHERE deck_id = ?').run(a.id, ts, clash.id);
+        db.prepare("UPDATE deck SET name = '__deleted__' || id, deleted = 1, updated_at = ? WHERE id = ?").run(ts, clash.id);
       }
-      db.prepare('UPDATE deck SET name = ? WHERE id = ?').run(rewritten, a.id);
+      db.prepare('UPDATE deck SET name = ?, updated_at = ? WHERE id = ?').run(rewritten, ts, a.id);
     }
   })();
 }
+
+export { } ;
