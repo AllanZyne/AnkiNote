@@ -1,11 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { api } from './api.js';
+import { openLocalDb } from './local/db.js';
+import { makeRepo } from './local/repo.js';
+import { makeSyncEngine } from './sync/engine.js';
 import DeckTree from './components/DeckTree.jsx';
 import BrowseView from './components/BrowseView.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
 import NoteTypeManager from './components/NoteTypeManager.jsx';
+import SyncStatus from './components/SyncStatus.jsx';
 
 export default function App() {
+  const [boot, setBoot] = useState(null); // { repo, engine }
   const [decks, setDecks] = useState([]);
   const [noteTypes, setNoteTypes] = useState([]);
   const [activeDeck, setActiveDeck] = useState(null);
@@ -13,57 +17,84 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState(null); // {kind, ...}
 
+  useEffect(() => {
+    let engine;
+    openLocalDb().then(db => {
+      const repo = makeRepo(db);
+      engine = makeSyncEngine({ db });
+      setBoot({ repo, engine });
+      engine.start();
+    });
+    return () => engine?.stop();
+  }, []);
+
   const noteTypesById = Object.fromEntries(noteTypes.map(nt => [nt.id, nt]));
 
-  const refreshDecks = useCallback(async () => setDecks(await api.listDecks()), []);
-  const refreshNoteTypes = useCallback(async () => setNoteTypes(await api.listNoteTypes()), []);
+  const refreshDecks = useCallback(async () => boot && setDecks(await boot.repo.listDecks()), [boot]);
+  const refreshNoteTypes = useCallback(async () => boot && setNoteTypes(await boot.repo.listNoteTypes()), [boot]);
 
   const refreshNotes = useCallback(async () => {
-    if (query.trim()) setNotes(await api.searchNotes(query));
-    else if (activeDeck) setNotes(await api.listNotesInDeck(activeDeck));
+    if (!boot) return;
+    if (query.trim()) setNotes(await boot.repo.searchNotes(query));
+    else if (activeDeck) setNotes(await boot.repo.listNotesInDeck(activeDeck));
     else setNotes([]);
-  }, [query, activeDeck]);
+  }, [query, activeDeck, boot]);
 
   useEffect(() => { refreshDecks(); refreshNoteTypes(); }, [refreshDecks, refreshNoteTypes]);
   useEffect(() => { refreshNotes(); }, [refreshNotes]);
 
   const addDeck = async () => {
     const name = prompt('New deck (use :: for sub-decks, e.g. Spanish::Verbs):');
-    if (name) { await api.createDeck({ name }); refreshDecks(); }
+    if (name) {
+      await boot.repo.createDeck({ name });
+      refreshDecks();
+      boot.engine.syncOnce();
+    }
   };
 
   const renameDeck = async (deck) => {
     const name = prompt('Rename deck:', deck.name);
-    if (name && name !== deck.name) { await api.renameDeck(deck.id, name); refreshDecks(); }
+    if (name && name !== deck.name) {
+      await boot.repo.renameDeck(deck.id, name);
+      refreshDecks();
+      boot.engine.syncOnce();
+    }
   };
 
   const togglePin = async (deck) => {
-    await api.updateDeck(deck.id, { pinned: !deck.pinned });
+    await boot.repo.updateDeck(deck.id, { pinned: !deck.pinned });
     refreshDecks();
+    boot.engine.syncOnce();
   };
 
   const toggleArchive = async (deck) => {
-    await api.updateDeck(deck.id, { archived: !deck.archived });
+    await boot.repo.updateDeck(deck.id, { archived: !deck.archived });
     refreshDecks();
+    boot.engine.syncOnce();
   };
 
   const removeDeck = async (deck) => {
     if (!confirm(`Delete deck "${deck.name}" and all its sub-decks and notes?`)) return;
-    await api.deleteDeck(deck.id);
+    await boot.repo.deleteDeck(deck.id);
     if (activeDeck === deck.id) setActiveDeck(null);
     refreshDecks();
+    boot.engine.syncOnce();
   };
 
   const saveNote = async (values) => {
-    if (modal.note) await api.updateNote(modal.note.id, { values });
-    else await api.createNote({ noteTypeId: modal.noteType.id, deckId: activeDeck, values });
-    setModal(null); refreshNotes();
+    if (modal.note) await boot.repo.updateNote(modal.note.id, { values });
+    else await boot.repo.createNote({ noteTypeId: modal.noteType.id, deckId: activeDeck, values });
+    setModal(null);
+    refreshNotes();
+    boot.engine.syncOnce();
   };
 
   const saveNoteType = async (payload) => {
-    if (modal.noteType) await api.updateNoteType(modal.noteType.id, payload);
-    else await api.createNoteType(payload);
-    setModal(null); refreshNoteTypes();
+    if (modal.noteType) await boot.repo.updateNoteType(modal.noteType.id, payload);
+    else await boot.repo.createNoteType(payload);
+    setModal(null);
+    refreshNoteTypes();
+    boot.engine.syncOnce();
   };
 
   const startNewNote = () => {
@@ -76,7 +107,13 @@ export default function App() {
     setModal({ kind: 'note', noteType: noteTypesById[note.noteTypeId], note });
   };
 
-  const deleteNote = async (id) => { await api.deleteNote(id); refreshNotes(); };
+  const deleteNote = async (id) => {
+    await boot.repo.deleteNote(id);
+    refreshNotes();
+    boot.engine.syncOnce();
+  };
+
+  if (!boot) return <div className="app">Loading…</div>;
 
   return (
     <div className="app">
@@ -105,6 +142,7 @@ export default function App() {
           <button onClick={startNewNote}>New note</button>
           <input type="search" placeholder="Search cards…"
             value={query} onChange={e => setQuery(e.target.value)} />
+          <SyncStatus engine={boot.engine} />
         </div>
 
         <BrowseView notes={notes} noteTypesById={noteTypesById}
