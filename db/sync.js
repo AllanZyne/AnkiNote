@@ -1,4 +1,4 @@
-import { toInstant, nowIso } from './ids.js';
+import { toInstant, nowIso, newId } from './ids.js';
 
 function storedUpdatedAt(db, table, id) {
   const row = db.prepare(`SELECT updated_at AS u FROM ${table} WHERE id = ?`).get(id);
@@ -15,6 +15,7 @@ function wins(incomingIso, storedIso) {
 function upsertDeck(db, id, ts, p) {
   const exists = db.prepare('SELECT 1 FROM deck WHERE id = ?').get(id);
   if (exists) {
+    // Name clash not merged (accepted single-user limitation)
     db.prepare('UPDATE deck SET name = ?, pinned = ?, archived = ?, deleted = 0, updated_at = ? WHERE id = ?')
       .run(p.name, p.pinned ? 1 : 0, p.archived ? 1 : 0, ts, id);
   } else {
@@ -38,12 +39,12 @@ function upsertNoteType(db, id, ts, p) {
       if (existing) {
         db.prepare('UPDATE field SET ord = ? WHERE id = ?').run(i, existing.id);
       } else {
-        const newFieldId = cryptoId();
+        const newFieldId = newId();
         db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)').run(newFieldId, id, f.name, i);
         // Backfill empty value for all existing notes of this type
         const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
         const insertValue = db.prepare('INSERT INTO field_value (id, note_id, field_id, value_md) VALUES (?, ?, ?, ?)');
-        noteIds.forEach(n => insertValue.run(cryptoId(), n.id, newFieldId, ''));
+        noteIds.forEach(n => insertValue.run(newId(), n.id, newFieldId, ''));
       }
     });
 
@@ -64,13 +65,13 @@ function upsertNoteType(db, id, ts, p) {
         db.prepare('UPDATE card_template SET front_html = ?, back_html = ?, ord = ? WHERE id = ?')
           .run(t.frontHtml ?? '', t.backHtml ?? '', i, existing.id);
       } else {
-        const newTemplateId = cryptoId();
+        const newTemplateId = newId();
         db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)')
           .run(newTemplateId, id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i);
         // Backfill a card for each existing note of this type
         const noteIds = db.prepare('SELECT id FROM note WHERE note_type_id = ?').all(id);
         const insertCard = db.prepare('INSERT INTO card (id, note_id, card_template_id) VALUES (?, ?, ?)');
-        noteIds.forEach(n => insertCard.run(cryptoId(), n.id, newTemplateId));
+        noteIds.forEach(n => insertCard.run(newId(), n.id, newTemplateId));
       }
     });
 
@@ -82,9 +83,9 @@ function upsertNoteType(db, id, ts, p) {
   } else {
     db.prepare('INSERT INTO note_type (id, name, css, deleted, updated_at) VALUES (?, ?, ?, 0, ?)').run(id, p.name, p.css ?? '', ts);
     const fStmt = db.prepare('INSERT INTO field (id, note_type_id, name, ord) VALUES (?, ?, ?, ?)');
-    (p.fields ?? []).forEach((f, i) => fStmt.run(f.id ?? cryptoId(), id, f.name, i));
+    (p.fields ?? []).forEach((f, i) => fStmt.run(f.id ?? newId(), id, f.name, i));
     const tStmt = db.prepare('INSERT INTO card_template (id, note_type_id, name, front_html, back_html, ord) VALUES (?, ?, ?, ?, ?, ?)');
-    (p.templates ?? []).forEach((t, i) => tStmt.run(t.id ?? cryptoId(), id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
+    (p.templates ?? []).forEach((t, i) => tStmt.run(t.id ?? newId(), id, t.name, t.frontHtml ?? '', t.backHtml ?? '', i));
   }
 }
 
@@ -101,14 +102,11 @@ function upsertNote(db, id, ts, p) {
   }
   const fields = db.prepare('SELECT id, name FROM field WHERE note_type_id = ?').all(p.noteTypeId);
   const fvStmt = db.prepare('INSERT INTO field_value (id, note_id, field_id, value_md) VALUES (?, ?, ?, ?)');
-  for (const f of fields) fvStmt.run(cryptoId(), id, f.id, (p.values ?? {})[f.name] ?? '');
+  for (const f of fields) fvStmt.run(newId(), id, f.id, (p.values ?? {})[f.name] ?? '');
   const templates = db.prepare('SELECT id FROM card_template WHERE note_type_id = ?').all(p.noteTypeId);
   const cStmt = db.prepare('INSERT INTO card (id, note_id, card_template_id) VALUES (?, ?, ?)');
-  for (const t of templates) cStmt.run(cryptoId(), id, t.id);
+  for (const t of templates) cStmt.run(newId(), id, t.id);
 }
-
-import { randomUUID } from 'node:crypto';
-function cryptoId() { return randomUUID(); }
 
 const UPSERT = { deck: upsertDeck, note_type: upsertNoteType, note: upsertNote };
 
@@ -122,7 +120,12 @@ export function pushOps(db, ops) {
       if (op.type === 'delete') {
         const exists = db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(op.id);
         if (exists) {
-          db.prepare(`UPDATE ${table} SET deleted = 1, updated_at = ? WHERE id = ?`).run(op.updatedAt, op.id);
+          // Free deck name (mirrors deleteDeck) so UNIQUE constraint allows recreation
+          if (table === 'deck') {
+            db.prepare("UPDATE deck SET name = '__deleted__' || id, deleted = 1, updated_at = ? WHERE id = ?").run(op.updatedAt, op.id);
+          } else {
+            db.prepare(`UPDATE ${table} SET deleted = 1, updated_at = ? WHERE id = ?`).run(op.updatedAt, op.id);
+          }
         } else {
           // Insert valid tombstones for unknown-id deletes
           if (table === 'deck') {

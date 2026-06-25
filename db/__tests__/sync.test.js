@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { openDb } from '../connection.js';
 import { newId, nowIso } from '../ids.js';
 import { pushOps, pullSince } from '../sync.js';
-import { listDecks } from '../decks.js';
+import { listDecks, createDeck } from '../decks.js';
 
 let db;
 beforeEach(() => { db = openDb(':memory:'); });
@@ -102,5 +102,27 @@ describe('sync', () => {
         { entity: 'deck', id: newId(), type: 'delete', updatedAt: '2026-06-25T10:01:00.000+00:00' }
       ]);
     }).not.toThrow();
+  });
+
+  // Bug 4 regression test: sync delete of a deck frees its UNIQUE name for recreation
+  it('sync delete frees deck name so it can be recreated', () => {
+    const id = newId();
+    pushOps(db, [{ entity: 'deck', id, type: 'upsert', updatedAt: '2026-06-25T10:00:00.000+00:00', payload: { name: 'Spanish', pinned: false, archived: false } }]);
+    pushOps(db, [{ entity: 'deck', id, type: 'delete', updatedAt: '2026-06-25T11:00:00.000+00:00' }]);
+    expect(() => createDeck(db, { name: 'Spanish' })).not.toThrow();
+    const decks = listDecks(db);
+    expect(decks.filter(d => d.name === 'Spanish')).toHaveLength(1);
+  });
+
+  it('sync-deleted deck tombstone still appears in pullSince', () => {
+    const id = newId();
+    const t1 = '2026-06-25T10:00:00.000+00:00';
+    const t2 = '2026-06-25T11:00:00.000+00:00';
+    pushOps(db, [{ entity: 'deck', id, type: 'upsert', updatedAt: t1, payload: { name: 'Spanish', pinned: false, archived: false } }]);
+    pushOps(db, [{ entity: 'deck', id, type: 'delete', updatedAt: t2 }]);
+    const pulled = pullSince(db, '2026-06-25T09:00:00.000+00:00');
+    const tomb = pulled.decks.find(d => d.id === id);
+    expect(tomb).toBeTruthy();
+    expect(tomb.deleted).toBe(true);
   });
 });
