@@ -28,3 +28,8 @@ textarea { font-family: ui-monospace, monospace; padding: 6px; }
 .sync-syncing { background: #eef2ff; color: #2a4bd0; }
 .sync-offline { background: #f4f0e3; color: #8a6d00; }
 .sync-error { background: #fbe3e3; color: #b00; }
+.connect-dialog { position: relative; }
+.connect-dialog h2 { margin-top: 0; }
+.connect-dialog label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.dialog-close { position: absolute; top: 8px; right: 10px; border: none; background: transparent; font-size: 20px; cursor: pointer; }
+.connect-toggle { margin-left: 8px; }
