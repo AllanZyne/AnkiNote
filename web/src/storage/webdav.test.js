@@ -106,4 +106,11 @@ describe('webdav provider', () => {
     const p = makeWebdavProvider({ ...cfg, fetchFn });
     expect(await p.exists('nope.md')).toBe(false);
   });
+
+  it('tags HTTP-status failures with code:HTTP and the status (list/write/move)', async () => {
+    const make = (status) => makeWebdavProvider({ ...cfg, fetchFn: mockFetch(async () => ({ ok: false, status, text: async () => '' })) });
+    await expect(make(401).list('x')).rejects.toMatchObject({ code: 'HTTP', status: 401 });
+    await expect(make(500).write('x.md', 'd')).rejects.toMatchObject({ code: 'HTTP', status: 500 });
+    await expect(make(403).move('a', 'b')).rejects.toMatchObject({ code: 'HTTP', status: 403 });
+  });
 });

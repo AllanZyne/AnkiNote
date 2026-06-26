@@ -1,5 +1,11 @@
 import { normalizePath } from './provider.js';
 
+// An HTTP error *response* (server replied with a bad status) — distinct from a
+// network/CORS failure, where fetch rejects with a TypeError and never reaches here.
+function httpError(method, status) {
+  return Object.assign(new Error(`${method} failed: ${status}`), { code: 'HTTP', status });
+}
+
 // Parse a PROPFIND Depth:1 multistatus body into child entries (vault-relative).
 function parsePropfind(xml, baseUrlPath, queriedPath) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -42,13 +48,16 @@ export function makeWebdavProvider({ baseUrl, authHeader, fetchFn = fetch }) {
 
     async list(path) {
       const res = await fetchFn(urlOf(path), { method: 'PROPFIND', headers: headers({ Depth: '1' }) });
-      if (!res.ok && res.status !== 207) throw new Error('PROPFIND failed: ' + res.status);
+      if (!res.ok && res.status !== 207) throw httpError('PROPFIND', res.status);
       return parsePropfind(await res.text(), basePath, path);
     },
 
     async read(path) {
       const res = await fetchFn(urlOf(path), { method: 'GET', headers: headers() });
-      if (!res.ok) throw Object.assign(new Error('GET failed: ' + res.status), { code: res.status === 404 ? 'NOT_FOUND' : 'HTTP' });
+      if (!res.ok) {
+        if (res.status === 404) throw Object.assign(new Error('GET failed: 404'), { code: 'NOT_FOUND', status: 404 });
+        throw httpError('GET', res.status);
+      }
       return { body: await res.text(), etag: res.headers?.get ? res.headers.get('ETag') : null };
     },
 
@@ -57,7 +66,7 @@ export function makeWebdavProvider({ baseUrl, authHeader, fetchFn = fetch }) {
       if (opts.ifMatch) h['If-Match'] = opts.ifMatch; // truthiness: never send "null"/empty
       const res = await fetchFn(urlOf(path), { method: 'PUT', headers: h, body });
       if (res.status === 412) throw Object.assign(new Error('etag mismatch'), { code: 'ETAG_MISMATCH' });
-      if (!res.ok) throw new Error('PUT failed: ' + res.status);
+      if (!res.ok) throw httpError('PUT', res.status);
       let etag = res.headers?.get ? res.headers.get('ETag') : null;
       if (!etag) {
         // Some servers don't echo ETag on PUT; fetch it so future If-Match works.
@@ -68,17 +77,17 @@ export function makeWebdavProvider({ baseUrl, authHeader, fetchFn = fetch }) {
 
     async mkdir(path) {
       const res = await fetchFn(urlOf(path), { method: 'MKCOL', headers: headers() });
-      if (!res.ok && res.status !== 405) throw new Error('MKCOL failed: ' + res.status); // 405 = already exists
+      if (!res.ok && res.status !== 405) throw httpError('MKCOL', res.status); // 405 = already exists
     },
 
     async remove(path) {
       const res = await fetchFn(urlOf(path), { method: 'DELETE', headers: headers() });
-      if (!res.ok && res.status !== 404) throw new Error('DELETE failed: ' + res.status);
+      if (!res.ok && res.status !== 404) throw httpError('DELETE', res.status);
     },
 
     async move(from, to) {
       const res = await fetchFn(urlOf(from), { method: 'MOVE', headers: headers({ Destination: urlOf(to), Overwrite: 'T' }) });
-      if (!res.ok) throw new Error('MOVE failed: ' + res.status);
+      if (!res.ok) throw httpError('MOVE', res.status);
     },
 
     async exists(path) {

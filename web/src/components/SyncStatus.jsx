@@ -9,8 +9,9 @@ export default function SyncStatus({ engine }) {
   const base = LABEL[status.state] ?? status.state;
   const text = status.pending > 0 ? `${base} (${status.pending})` : base;
   const OFFLINE_HINT = "Couldn't reach the vault — the server may be down or not sending CORS headers for this site.";
-  const title = status.state === 'offline'
-    ? OFFLINE_HINT
+  const ERROR_HINT = "The vault server rejected the request — check your credentials or the server logs.";
+  const title = status.state === 'offline' ? OFFLINE_HINT
+    : status.state === 'error' ? ERROR_HINT
     : (status.lastSyncedAt ? `Last synced ${status.lastSyncedAt}` : 'Not synced yet');
 
   return (

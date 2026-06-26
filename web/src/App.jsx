@@ -64,7 +64,9 @@ export default function App() {
     await connect(db, cfg);
     // connect() awaits engine.syncOnce(), which sets the final state before resolving.
     const state = engineRef.current?.getStatus().state;
-    if (cfg.type === 'webdav' && (state === 'offline' || state === 'error')) {
+    if (cfg.type === 'webdav' && state === 'error') {
+      setConnectError('The vault server rejected the request — check your username/password (or the server logs).');
+    } else if (cfg.type === 'webdav' && state === 'offline') {
       setConnectError("Couldn't reach the vault — the server may be down, or it isn't sending CORS headers for this site. See CORS setup in the README.");
     } else {
       setShowConnect(false);
