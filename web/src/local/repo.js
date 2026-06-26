@@ -120,7 +120,7 @@ export function makeRepo(db) {
     },
     async createNoteType({ name, css = '', fields, templates }) {
       const ts = nowIso();
-      const id = uid();
+      const id = name; // a note type's id IS its (unique) file name
       const nt = {
         id, name, css, deleted: false, updatedAt: ts,
         fields: fields.map((f, i) => ({ name: f.name, ord: i })),

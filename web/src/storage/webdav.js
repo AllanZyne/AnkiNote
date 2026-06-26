@@ -54,11 +54,16 @@ export function makeWebdavProvider({ baseUrl, authHeader, fetchFn = fetch }) {
 
     async write(path, body, opts = {}) {
       const h = headers({ 'Content-Type': 'text/markdown; charset=utf-8' });
-      if (opts.ifMatch !== undefined) h['If-Match'] = opts.ifMatch;
+      if (opts.ifMatch) h['If-Match'] = opts.ifMatch; // truthiness: never send "null"/empty
       const res = await fetchFn(urlOf(path), { method: 'PUT', headers: h, body });
       if (res.status === 412) throw Object.assign(new Error('etag mismatch'), { code: 'ETAG_MISMATCH' });
       if (!res.ok) throw new Error('PUT failed: ' + res.status);
-      return { etag: res.headers?.get ? res.headers.get('ETag') : null };
+      let etag = res.headers?.get ? res.headers.get('ETag') : null;
+      if (!etag) {
+        // Some servers don't echo ETag on PUT; fetch it so future If-Match works.
+        try { const r = await this.read(path); etag = r.etag || null; } catch { etag = null; }
+      }
+      return { etag };
     },
 
     async mkdir(path) {

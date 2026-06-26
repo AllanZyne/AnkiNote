@@ -1,7 +1,7 @@
 import { toInstant } from '../local/clock.js';
 import { serializeNote, parseNote } from '../vault/note.js';
 import { serializeNoteType, parseNoteType } from '../vault/noteType.js';
-import { serializeDecks } from '../vault/meta.js';
+import { serializeDecks, parseDecks } from '../vault/meta.js';
 import { scanVault } from '../vault/scan.js';
 import { dirToDeckPath, isAnkinotePath, INDEX_PATH, DECKS_PATH } from '../vault/paths.js';
 import { dirname } from '../storage/provider.js';
@@ -56,7 +56,8 @@ export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
         if (body == null) { await db.delete('outbox', op.opId); continue; }
         try {
           const currentEtag = await getEtag(op.path);
-          const { etag } = await provider.write(op.path, body, { ifMatch: currentEtag });
+          const wopts = provider.capabilities?.supportsConditionalWrite ? { ifMatch: currentEtag } : {};
+          const { etag } = await provider.write(op.path, body, wopts);
           await setFileMeta(op.path, etag);
         } catch (e) {
           if (e.code === 'ETAG_MISMATCH') {
@@ -97,14 +98,32 @@ export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
       await db.put('meta', { key: 'decks.json', value: body });
     } else if (path.startsWith(NOTE_TYPES_PREFIX) && path.endsWith('.md')) {
       const nt = parseNoteType(body);
+      // Note-type files carry no modtime; refresh in place keyed by name.
       await db.put('noteTypes', { id: nt.name, ...nt, deleted: false, updatedAt: new Date().toISOString() });
     } else if (!isAnkinotePath(path) && path.endsWith('.md')) {
       const n = parseNote(body);
-      const deck = dirToDeckPath(dirname(path));
-      const deckId = await ensureDeckByName(deck);
-      await db.put('notes', { id: n.id, noteTypeId: n.noteType, deckId, deck, created: n.created, values: n.fields, deleted: false, updatedAt: n.modified });
+      const local = await db.get('notes', n.id);
+      // LWW: only overwrite when the incoming file is strictly newer (no server safety net).
+      if (!local || toInstant(n.modified) > toInstant(local.updatedAt)) {
+        const deck = dirToDeckPath(dirname(path));
+        const deckId = await ensureDeckByName(deck);
+        await db.put('notes', { id: n.id, noteTypeId: n.noteType, deckId, deck, created: n.created, values: n.fields, deleted: false, updatedAt: n.modified });
+      }
     }
     await setFileMeta(path, etag);
+  }
+
+  // Recreate empty decks and restore pinned/archived flags from stored decks.json. Idempotent (match by name).
+  async function applyDecksJson() {
+    const m = await db.get('meta', 'decks.json');
+    const map = parseDecks(m?.value);
+    for (const [name, flags] of Object.entries(map)) {
+      const id = await ensureDeckByName(name);
+      const row = await db.get('decks', id);
+      row.pinned = !!flags?.pinned;
+      row.archived = !!flags?.archived;
+      await db.put('decks', row);
+    }
   }
 
   async function pull() {
@@ -115,6 +134,7 @@ export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
       if (known && f.etag && known === f.etag) continue;        // unchanged
       await importFile(f.path);
     }
+    await applyDecksJson();
     // rewrite index.json from the note store
     const notes = await db.getAll('notes');
     const index = { notes: {}, generatedAt: new Date().toISOString() };

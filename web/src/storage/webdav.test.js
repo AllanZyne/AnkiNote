@@ -62,6 +62,29 @@ describe('webdav provider', () => {
     expect(res.etag).toBe('"e2"');
   });
 
+  it('write with no cached etag does NOT send If-Match (falsy guard)', async () => {
+    let seen;
+    const fetchFn = mockFetch(async (url, opts) => {
+      if (opts.method === 'PUT') { seen = opts; return { ok: true, status: 200, text: async () => '', headers: { get: () => null } }; }
+      // follow-up PROPFIND for the etag
+      return { ok: true, status: 207, text: async () => PROPFIND_XML };
+    });
+    const p = makeWebdavProvider({ ...cfg, fetchFn });
+    await p.write('x.md', 'data', { ifMatch: null });
+    expect('If-Match' in seen.headers).toBe(false);
+  });
+
+  it('write with no ETag response fetches the etag via follow-up read', async () => {
+    const fetchFn = mockFetch(async (url, opts) => {
+      if (opts.method === 'PUT') return { ok: true, status: 201, text: async () => '', headers: { get: () => null } };
+      if (opts.method === 'GET') return { ok: true, status: 200, text: async () => 'data', headers: { get: (h) => (h.toLowerCase() === 'etag' ? '"follow"' : null) } };
+      return { ok: true, status: 207, text: async () => PROPFIND_XML };
+    });
+    const p = makeWebdavProvider({ ...cfg, fetchFn });
+    const res = await p.write('x.md', 'data', {});
+    expect(res.etag).toBe('"follow"');
+  });
+
   it('write throws ETAG_MISMATCH on 412', async () => {
     const fetchFn = mockFetch(async () => ({ ok: false, status: 412, text: async () => '' }));
     const p = makeWebdavProvider({ ...cfg, fetchFn });
