@@ -13,6 +13,7 @@
   "dependencies": {
     "@vscode/markdown-it-katex": "^1.1.2",
     "idb": "^8.0.0",
+    "js-yaml": "^4.1.0",
     "katex": "^0.17.0",
     "markdown-it": "^14.1.0",
     "react": "^18.3.1",
