@@ -1,45 +1,36 @@
 # AnkiNote
 
-An Anki-style note app: each note is a flippable card (front/back) rendered from
-a user-defined note type (named fields + HTML templates + CSS). Markdown field
-content with LaTeX math, nested decks, content search. Web app first; SQLite
-storage.
+A standalone, serverless Anki-style note PWA. Your notes live as plain folders
+and Markdown files in a **vault** on storage you control (WebDAV today; S3 /
+OneDrive / Dropbox are planned via the same provider interface). The app runs
+entirely in the browser, caches the vault in IndexedDB for instant edits, and
+syncs changes back in the background — similar to Obsidian.
 
-## Writing notes
-
-- **Markdown** in every field (bold, lists, links, etc.).
-- **LaTeX math** via KaTeX: inline with `$...$`, display with `$$...$$`
-  (e.g. `area is $\pi r^2$`). Invalid LaTeX renders as its source instead of
-  breaking the card. Math is rendered into the card's sandboxed iframe with
-  fonts inlined, so it works fully offline.
-- Cards are organized into nested **decks**; each card lives in one deck.
+- Each note is a Markdown file (`<!-- field: Front -->` sections) with YAML
+  frontmatter; decks are folders; app config + a rebuildable index live under
+  `.ankinote/`.
 
 ## Requirements
 
-- Node 20.x (installed at `~/.local/bin`).
+- Node 20.x (for the dev server / build only).
+- A WebDAV server reachable from the browser with **CORS enabled for the app
+  origin** (e.g. Nextcloud, rclone serve webdav). The app sends
+  PROPFIND/GET/PUT/MKCOL/DELETE/MOVE directly from the browser.
 
-## Setup
-
-```bash
-npm install
-(cd web && npm install)
-npm run seed        # optional demo data
-```
-
-## Run (two terminals)
+## Run
 
 ```bash
-npm run server      # API on http://localhost:3001
-cd web && npm run dev   # UI on http://localhost:5173
+cd web && npm install && npm run dev   # http://localhost:5173
 ```
 
-Open http://localhost:5173.
+On first load, enter your WebDAV URL + credentials (or click "Try demo
+(in-memory)" to explore without a server). Build a deployable PWA with
+`npm run build` (output in `web/dist`).
 
 ## Test
 
 ```bash
-npm test            # db + server
-cd web && npm test  # web
+cd web && npm test
 ```
 
 ## License
