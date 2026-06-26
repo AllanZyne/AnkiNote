@@ -1,7 +1,9 @@
 import { nowIso } from './clock.js';
 import { planCreate, planRename, planDelete } from '../lib/deckOps.js';
+import { noteFilePath, noteTypePath, DECKS_PATH } from '../vault/paths.js';
 
 const uid = () => crypto.randomUUID();
+const enqueueDecks = (store, at) => store.add({ op: 'write', kind: 'decks', path: DECKS_PATH, at });
 
 export async function outboxAll(db) {
   return db.getAll('outbox');
@@ -27,7 +29,7 @@ export function makeRepo(db) {
       for (const c of creates) {
         const row = { id: c.id, name: c.name, pinned: false, archived: false, deleted: false, updatedAt: ts };
         await tx.objectStore('decks').put(row);
-        await tx.objectStore('outbox').add({ entity: 'deck', id: c.id, type: 'upsert', updatedAt: ts, payload: { name: c.name, pinned: false, archived: false } });
+        await enqueueDecks(tx.objectStore('outbox'), ts);
       }
       await tx.done;
       const leaf = creates[creates.length - 1];
@@ -43,26 +45,39 @@ export function makeRepo(db) {
       const ostore = tx.objectStore('outbox');
       for (const c of creates) {
         await dstore.put({ id: c.id, name: c.name, pinned: false, archived: false, deleted: false, updatedAt: ts });
-        await ostore.add({ entity: 'deck', id: c.id, type: 'upsert', updatedAt: ts, payload: { name: c.name, pinned: false, archived: false } });
+        await enqueueDecks(ostore, ts);
       }
       for (const m of merges) {
-        // re-point notes from the colliding deck to the surviving (renamed) deck
+        const fromDeck = await dstore.get(m.fromId);
+        const toDeck = await dstore.get(m.toId);
         const notes = (await tx.objectStore('notes').getAll()).filter(n => n.deckId === m.fromId);
         for (const note of notes) {
+          const from = noteFilePath(fromDeck.name, note.id);
           note.deckId = m.toId; note.updatedAt = ts;
           await tx.objectStore('notes').put(note);
-          await ostore.add({ entity: 'note', id: note.id, type: 'upsert', updatedAt: ts, payload: notePayload(note) });
+          const path = noteFilePath(toDeck.name, note.id);
+          await ostore.add({ op: 'move', kind: 'note', id: note.id, from, path, at: ts });
         }
         const dead = await dstore.get(m.fromId);
         dead.deleted = true; dead.updatedAt = ts;
         await dstore.put(dead);
-        await ostore.add({ entity: 'deck', id: m.fromId, type: 'delete', updatedAt: ts });
+        await enqueueDecks(ostore, ts);
       }
       for (const r of renames) {
         const row = await dstore.get(r.id);
+        const oldName = row.name;
         row.name = r.name; row.updatedAt = ts;
         await dstore.put(row);
-        await ostore.add({ entity: 'deck', id: r.id, type: 'upsert', updatedAt: ts, payload: { name: row.name, pinned: !!row.pinned, archived: !!row.archived } });
+        await enqueueDecks(ostore, ts);
+        // if deck name changed, emit move ops for notes in this deck
+        if (oldName !== r.name) {
+          const notes = (await tx.objectStore('notes').getAll()).filter(n => n.deckId === r.id && !n.deleted);
+          for (const note of notes) {
+            const from = noteFilePath(oldName, note.id);
+            const path = noteFilePath(r.name, note.id);
+            await ostore.add({ op: 'move', kind: 'note', id: note.id, from, path, at: ts });
+          }
+        }
       }
       await tx.done;
     },
@@ -75,7 +90,7 @@ export function makeRepo(db) {
       if (patch.archived !== undefined) row.archived = patch.archived;
       row.updatedAt = ts;
       await tx.objectStore('decks').put(row);
-      await tx.objectStore('outbox').add({ entity: 'deck', id, type: 'upsert', updatedAt: ts, payload: { name: row.name, pinned: !!row.pinned, archived: !!row.archived } });
+      await enqueueDecks(tx.objectStore('outbox'), ts);
       await tx.done;
       return { id, name: row.name, pinned: !!row.pinned, archived: !!row.archived, updatedAt: ts };
     },
@@ -89,7 +104,7 @@ export function makeRepo(db) {
         const row = await tx.objectStore('decks').get(did);
         row.deleted = true; row.updatedAt = ts;
         await tx.objectStore('decks').put(row);
-        await tx.objectStore('outbox').add({ entity: 'deck', id: did, type: 'delete', updatedAt: ts });
+        await enqueueDecks(tx.objectStore('outbox'), ts);
       }
       await tx.done;
     },
@@ -113,7 +128,7 @@ export function makeRepo(db) {
       };
       const tx = db.transaction(['noteTypes', 'outbox'], 'readwrite');
       await tx.objectStore('noteTypes').put(nt);
-      await tx.objectStore('outbox').add({ entity: 'note_type', id, type: 'upsert', updatedAt: ts, payload: ntPayload(nt) });
+      await tx.objectStore('outbox').add({ op: 'write', kind: 'noteType', id: name, path: noteTypePath(name), at: ts });
       await tx.done;
       return nt;
     },
@@ -125,7 +140,7 @@ export function makeRepo(db) {
       nt.fields = fields.map((f, i) => ({ name: f.name, ord: i }));
       nt.templates = templates.map((t, i) => ({ name: t.name, frontHtml: t.frontHtml ?? '', backHtml: t.backHtml ?? '', ord: i }));
       await tx.objectStore('noteTypes').put(nt);
-      await tx.objectStore('outbox').add({ entity: 'note_type', id, type: 'upsert', updatedAt: ts, payload: ntPayload(nt) });
+      await tx.objectStore('outbox').add({ op: 'write', kind: 'noteType', id: name, path: noteTypePath(name), at: ts });
       await tx.done;
       return nt;
     },
@@ -135,7 +150,7 @@ export function makeRepo(db) {
       const nt = await tx.objectStore('noteTypes').get(id);
       nt.deleted = true; nt.updatedAt = ts;
       await tx.objectStore('noteTypes').put(nt);
-      await tx.objectStore('outbox').add({ entity: 'note_type', id, type: 'delete', updatedAt: ts });
+      await tx.objectStore('outbox').add({ op: 'remove', kind: 'noteType', id: nt.name, path: noteTypePath(nt.name), at: ts });
       await tx.done;
     },
 
@@ -159,31 +174,44 @@ export function makeRepo(db) {
       const ts = nowIso();
       const id = uid();
       const note = { id, noteTypeId, deckId, created: ts, values: { ...values }, deleted: false, updatedAt: ts };
-      const tx = db.transaction(['notes', 'outbox'], 'readwrite');
+      const tx = db.transaction(['decks', 'notes', 'outbox'], 'readwrite');
       await tx.objectStore('notes').put(note);
-      await tx.objectStore('outbox').add({ entity: 'note', id, type: 'upsert', updatedAt: ts, payload: notePayload(note) });
+      const deck = await tx.objectStore('decks').get(deckId);
+      const path = noteFilePath(deck.name, id);
+      await tx.objectStore('outbox').add({ op: 'write', kind: 'note', id, path, at: ts });
       await tx.done;
       return note;
     },
     async updateNote(id, { deckId, values }) {
       const ts = nowIso();
-      const tx = db.transaction(['notes', 'outbox'], 'readwrite');
+      const tx = db.transaction(['decks', 'notes', 'outbox'], 'readwrite');
       const note = await tx.objectStore('notes').get(id);
+      const oldDeckId = note.deckId;
       if (deckId != null) note.deckId = deckId;
       if (values) note.values = { ...note.values, ...values };
       note.updatedAt = ts;
       await tx.objectStore('notes').put(note);
-      await tx.objectStore('outbox').add({ entity: 'note', id, type: 'upsert', updatedAt: ts, payload: notePayload(note) });
+      const deck = await tx.objectStore('decks').get(note.deckId);
+      const path = noteFilePath(deck.name, id);
+      if (deckId != null && deckId !== oldDeckId) {
+        const oldDeck = await tx.objectStore('decks').get(oldDeckId);
+        const from = noteFilePath(oldDeck.name, id);
+        await tx.objectStore('outbox').add({ op: 'move', kind: 'note', id, from, path, at: ts });
+      } else {
+        await tx.objectStore('outbox').add({ op: 'write', kind: 'note', id, path, at: ts });
+      }
       await tx.done;
       return note;
     },
     async deleteNote(id) {
       const ts = nowIso();
-      const tx = db.transaction(['notes', 'outbox'], 'readwrite');
+      const tx = db.transaction(['decks', 'notes', 'outbox'], 'readwrite');
       const note = await tx.objectStore('notes').get(id);
+      const deck = await tx.objectStore('decks').get(note.deckId);
+      const path = noteFilePath(deck.name, id);
       note.deleted = true; note.updatedAt = ts;
       await tx.objectStore('notes').put(note);
-      await tx.objectStore('outbox').add({ entity: 'note', id, type: 'delete', updatedAt: ts });
+      await tx.objectStore('outbox').add({ op: 'remove', kind: 'note', id, path, at: ts });
       await tx.done;
     },
   };

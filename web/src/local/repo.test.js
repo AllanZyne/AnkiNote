@@ -17,14 +17,19 @@ describe('repo decks', () => {
     const decks = await repo.listDecks();
     expect(decks.map(x => x.name)).toEqual(['Spanish']);
     const ops = await outboxAll(db);
-    expect(ops.filter(o => o.entity === 'deck' && o.type === 'upsert')).toHaveLength(1);
-    expect(ops[0].updatedAt).toMatch(/[+-]\d{2}:\d{2}$/);
+    expect(ops.some(o => o.kind === 'decks' && o.path === '.ankinote/decks.json')).toBe(true);
+  });
+
+  it('createDeck enqueues a decks.json write op', async () => {
+    await repo.createDeck({ name: 'Spanish' });
+    const ops = await outboxAll(db);
+    expect(ops.some(o => o.kind === 'decks' && o.path === '.ankinote/decks.json')).toBe(true);
   });
 
   it('createDeck auto-creates ancestors (each an outbox op)', async () => {
     await repo.createDeck({ name: 'A::B::C' });
     expect((await repo.listDecks()).map(d => d.name).sort()).toEqual(['A', 'A::B', 'A::B::C']);
-    expect((await outboxAll(db)).filter(o => o.entity === 'deck')).toHaveLength(3);
+    expect((await outboxAll(db)).filter(o => o.kind === 'decks')).toHaveLength(3);
   });
 
   it('renameDeck rewrites descendants', async () => {
@@ -38,7 +43,7 @@ describe('repo decks', () => {
     const d = await repo.createDeck({ name: 'Temp' });
     await repo.deleteDeck(d.id);
     expect(await repo.listDecks()).toHaveLength(0);
-    expect((await outboxAll(db)).some(o => o.type === 'delete' && o.id === d.id)).toBe(true);
+    expect((await outboxAll(db)).some(o => o.kind === 'decks')).toBe(true);
   });
 
   it('updateDeck sets pinned and queues an upsert', async () => {
@@ -53,7 +58,25 @@ describe('repo note types and notes', () => {
     const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
     expect(nt.id).toBeTruthy();
     expect((await repo.listNoteTypes())[0].fields[0].name).toBe('Front');
-    expect((await outboxAll(db)).some(o => o.entity === 'note_type' && o.type === 'upsert')).toBe(true);
+    expect((await outboxAll(db)).some(o => o.kind === 'noteType' && o.op === 'write')).toBe(true);
+  });
+
+  it('createNote enqueues a write file-op with the note path', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    const deck = await repo.createDeck({ name: 'Spanish' });
+    const note = await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'hola' } });
+    const ops = await outboxAll(db);
+    const noteOp = ops.find(o => o.kind === 'note' && o.op === 'write' && o.id === note.id);
+    expect(noteOp.path).toBe(`Spanish/${note.id}.md`);
+  });
+
+  it('deleteNote enqueues a remove file-op', async () => {
+    const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
+    const deck = await repo.createDeck({ name: 'D' });
+    const note = await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'x' } });
+    await repo.deleteNote(note.id);
+    const ops = await outboxAll(db);
+    expect(ops.some(o => o.op === 'remove' && o.id === note.id)).toBe(true);
   });
 
   it('createNote stores values and lists in its deck', async () => {
