@@ -21,13 +21,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2}'],
-        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
   server: {
     port: 5173,
-    proxy: { '/api': 'http://localhost:3001' },
   },
   test: {
     environment: 'jsdom',

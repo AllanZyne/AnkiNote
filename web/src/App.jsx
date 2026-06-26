@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { openLocalDb } from './local/db.js';
 import { makeRepo } from './local/repo.js';
-import { makeSyncEngine } from './sync/engine.js';
+import { makeProvider } from './storage/index.js';
+import { makeVaultSync } from './sync/vaultSync.js';
+import { loadSettings, saveSettings } from './settings/store.js';
+import { createStarterVault } from './starter.js';
+import ConnectScreen from './components/ConnectScreen.jsx';
 import DeckTree from './components/DeckTree.jsx';
 import BrowseView from './components/BrowseView.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
@@ -9,6 +13,8 @@ import NoteTypeManager from './components/NoteTypeManager.jsx';
 import SyncStatus from './components/SyncStatus.jsx';
 
 export default function App() {
+  const [db, setDb] = useState(null);
+  const [needsConnect, setNeedsConnect] = useState(false);
   const [boot, setBoot] = useState(null); // { repo, engine }
   const [decks, setDecks] = useState([]);
   const [noteTypes, setNoteTypes] = useState([]);
@@ -17,16 +23,30 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState(null); // {kind, ...}
 
+  // open db, then either show connect screen or auto-connect from saved settings
   useEffect(() => {
     let engine;
-    openLocalDb().then(db => {
-      const repo = makeRepo(db);
-      engine = makeSyncEngine({ db });
-      setBoot({ repo, engine });
-      engine.start();
+    openLocalDb().then(async (database) => {
+      setDb(database);
+      const cfg = await loadSettings(database);
+      if (!cfg) { setNeedsConnect(true); return; }
+      engine = await connect(database, cfg);
     });
     return () => engine?.stop();
   }, []);
+
+  async function connect(database, cfg) {
+    await saveSettings(database, cfg);
+    const provider = makeProvider(cfg);
+    const repo = makeRepo(database);
+    const engine = makeVaultSync({ db: database, provider });
+    engine.start();
+    await engine.syncOnce();            // initial pull
+    await createStarterVault(repo);     // seed if empty
+    setBoot({ repo, engine });
+    setNeedsConnect(false);
+    return engine;
+  }
 
   const noteTypesById = Object.fromEntries(noteTypes.map(nt => [nt.id, nt]));
 
@@ -113,6 +133,7 @@ export default function App() {
     boot.engine.syncOnce();
   };
 
+  if (needsConnect) return <ConnectScreen onConnect={(cfg) => connect(db, cfg)} />;
   if (!boot) return <div className="app">Loading…</div>;
 
   return (
