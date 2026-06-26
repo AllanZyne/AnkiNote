@@ -5,7 +5,7 @@ import { makeProvider } from './storage/index.js';
 import { makeVaultSync } from './sync/vaultSync.js';
 import { loadSettings, saveSettings } from './settings/store.js';
 import { createStarterVault } from './starter.js';
-import ConnectScreen from './components/ConnectScreen.jsx';
+import ConnectDialog from './components/ConnectDialog.jsx';
 import DeckTree from './components/DeckTree.jsx';
 import BrowseView from './components/BrowseView.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
@@ -14,39 +14,55 @@ import SyncStatus from './components/SyncStatus.jsx';
 
 export default function App() {
   const [db, setDb] = useState(null);
-  const [needsConnect, setNeedsConnect] = useState(false);
-  const [boot, setBoot] = useState(null); // { repo, engine }
+  const [config, setConfig] = useState(null);     // active provider config
+  const [showConnect, setShowConnect] = useState(false);
+  const [boot, setBoot] = useState(null);          // { repo, engine }
   const [decks, setDecks] = useState([]);
   const [noteTypes, setNoteTypes] = useState([]);
   const [activeDeck, setActiveDeck] = useState(null);
   const [notes, setNotes] = useState([]);
   const [query, setQuery] = useState('');
-  const [modal, setModal] = useState(null); // {kind, ...}
+  const [modal, setModal] = useState(null);
 
-  // open db, then either show connect screen or auto-connect from saved settings
-  useEffect(() => {
-    let engine;
-    openLocalDb().then(async (database) => {
-      setDb(database);
-      const cfg = await loadSettings(database);
-      if (!cfg) { setNeedsConnect(true); return; }
-      engine = await connect(database, cfg);
-    });
-    return () => engine?.stop();
-  }, []);
+  // engine ref for cleanup on swap/unmount
+  const [engineRef] = useState(() => ({ current: null }));
+  useEffect(() => () => engineRef.current?.stop(), [engineRef]);
 
-  async function connect(database, cfg) {
+  // cleanup db on unmount
+  useEffect(() => () => db?.close(), [db]);
+
+  const connect = useCallback(async (database, cfg) => {
     await saveSettings(database, cfg);
+    engineRef.current?.stop();
     const provider = makeProvider(cfg);
     const repo = makeRepo(database);
     const engine = makeVaultSync({ db: database, provider });
+    engineRef.current = engine;
+    await engine.syncOnce();
     engine.start();
-    await engine.syncOnce();            // initial pull
-    await createStarterVault(repo);     // seed if empty
+    await createStarterVault(repo);
     setBoot({ repo, engine });
-    setNeedsConnect(false);
-    return engine;
-  }
+    setConfig(cfg);
+  }, []);
+
+  // Always boot a vault: saved provider, else in-memory (and auto-open the dialog first run).
+  useEffect(() => {
+    let active = true;
+    openLocalDb().then(async (database) => {
+      if (!active) return;
+      setDb(database);
+      const saved = await loadSettings(database);
+      await connect(database, saved || { type: 'memory' });
+      if (!saved) setShowConnect(true);
+    });
+    return () => { active = false; };
+  }, [connect]);
+
+  const onConnect = async (cfg) => { await connect(db, cfg); setShowConnect(false); };
+
+  const connectLabel = config?.type === 'webdav'
+    ? (() => { try { return new URL(config.baseUrl).hostname; } catch { return 'WebDAV'; } })()
+    : 'Local-only';
 
   const noteTypesById = Object.fromEntries(noteTypes.map(nt => [nt.id, nt]));
 
@@ -133,7 +149,6 @@ export default function App() {
     boot.engine.syncOnce();
   };
 
-  if (needsConnect) return <ConnectScreen onConnect={(cfg) => connect(db, cfg)} />;
   if (!boot) return <div className="app">Loading…</div>;
 
   return (
@@ -164,6 +179,7 @@ export default function App() {
           <input type="search" placeholder="Search cards…"
             value={query} onChange={e => setQuery(e.target.value)} />
           <SyncStatus engine={boot.engine} />
+          <button className="connect-toggle" onClick={() => setShowConnect(true)}>{connectLabel}</button>
         </div>
 
         <BrowseView notes={notes} noteTypesById={noteTypesById}
@@ -193,6 +209,10 @@ export default function App() {
             />
           </div>
         </div>
+      )}
+
+      {showConnect && (
+        <ConnectDialog onConnect={onConnect} onClose={() => setShowConnect(false)} />
       )}
     </div>
   );
