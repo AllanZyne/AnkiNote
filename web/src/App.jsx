@@ -223,7 +223,8 @@ export default function App() {
       )}
 
       {showConnect && (
-        <ConnectDialog onConnect={onConnect} onClose={() => setShowConnect(false)} error={connectError} />
+        <ConnectDialog onConnect={onConnect} onClose={() => setShowConnect(false)}
+          error={connectError} initial={config} />
       )}
     </div>
   );

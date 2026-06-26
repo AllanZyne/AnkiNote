@@ -1,13 +1,22 @@
 import React, { useState } from 'react';
 
-export default function ConnectDialog({ onConnect, onClose, error }) {
-  const [baseUrl, setBaseUrl] = useState('');
-  const [user, setUser] = useState('');
+function decodeUser(authHeader) {
+  try { return atob(String(authHeader).replace(/^Basic /, '')).split(':')[0] || ''; }
+  catch { return ''; }
+}
+
+export default function ConnectDialog({ onConnect, onClose, error, initial }) {
+  const webdav = initial?.type === 'webdav' ? initial : null;
+  const [baseUrl, setBaseUrl] = useState(webdav?.baseUrl ?? '');
+  const [user, setUser] = useState(webdav ? decodeUser(webdav.authHeader) : '');
   const [pass, setPass] = useState('');
 
   const connect = (e) => {
     e.preventDefault();
-    onConnect({ type: 'webdav', baseUrl, authHeader: 'Basic ' + btoa(`${user}:${pass}`) });
+    const authHeader = pass !== ''
+      ? 'Basic ' + btoa(`${user}:${pass}`)
+      : (webdav?.authHeader ?? 'Basic ' + btoa(`${user}:`));
+    onConnect({ type: 'webdav', baseUrl, authHeader });
   };
 
   return (
@@ -25,7 +34,8 @@ export default function ConnectDialog({ onConnect, onClose, error }) {
             <input aria-label="Username" value={user} onChange={e => setUser(e.target.value)} />
           </label>
           <label>Password
-            <input aria-label="Password" type="password" value={pass} onChange={e => setPass(e.target.value)} />
+            <input aria-label="Password" type="password" value={pass} onChange={e => setPass(e.target.value)}
+              placeholder={webdav ? 'leave blank to keep current password' : ''} />
           </label>
           <div className="toolbar">
             <button type="submit">Connect</button>

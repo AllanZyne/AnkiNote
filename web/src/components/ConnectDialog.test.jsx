@@ -40,4 +40,33 @@ describe('ConnectDialog', () => {
     render(<ConnectDialog onConnect={() => {}} onClose={() => {}} error="boom CORS headers" />);
     expect(screen.getByRole('alert').textContent).toMatch(/CORS headers/);
   });
+
+  it('pre-fills URL and username from an initial webdav config, password blank', () => {
+    const initial = { type: 'webdav', baseUrl: 'https://d/dav', authHeader: 'Basic ' + btoa('alice:secret') };
+    render(<ConnectDialog onConnect={() => {}} onClose={() => {}} initial={initial} />);
+    expect(screen.getByLabelText('WebDAV URL').value).toBe('https://d/dav');
+    expect(screen.getByLabelText('Username').value).toBe('alice');
+    expect(screen.getByLabelText('Password').value).toBe('');
+  });
+
+  it('reuses the saved authHeader when password is left blank', () => {
+    const onConnect = vi.fn();
+    const initial = { type: 'webdav', baseUrl: 'https://d/dav', authHeader: 'Basic ' + btoa('alice:secret') };
+    render(<ConnectDialog onConnect={onConnect} onClose={() => {}} initial={initial} />);
+    fireEvent.click(screen.getByText('Connect'));
+    expect(onConnect).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'webdav', baseUrl: 'https://d/dav', authHeader: 'Basic ' + btoa('alice:secret'),
+    }));
+  });
+
+  it('rebuilds the authHeader when a new password is typed', () => {
+    const onConnect = vi.fn();
+    const initial = { type: 'webdav', baseUrl: 'https://d/dav', authHeader: 'Basic ' + btoa('alice:secret') };
+    render(<ConnectDialog onConnect={onConnect} onClose={() => {}} initial={initial} />);
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'newpass' } });
+    fireEvent.click(screen.getByText('Connect'));
+    expect(onConnect).toHaveBeenCalledWith(expect.objectContaining({
+      authHeader: 'Basic ' + btoa('alice:newpass'),
+    }));
+  });
 });
