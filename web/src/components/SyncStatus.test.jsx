@@ -30,4 +30,13 @@ describe('SyncStatus', () => {
     const el = container.querySelector('.sync-status');
     expect(el.getAttribute('title')).toMatch(/CORS headers/);
   });
+
+  it('renders Local with a neutral tooltip in the local state', () => {
+    const e = fakeEngine({ state: 'local', pending: 0, lastSyncedAt: null });
+    const { container } = render(<SyncStatus engine={e} />);
+    expect(screen.getByText('Local')).toBeTruthy();
+    const el = container.querySelector('.sync-status');
+    expect(el.className).toMatch(/sync-local/);
+    expect(el.getAttribute('title')).toMatch(/not connected to a vault/);
+  });
 });
