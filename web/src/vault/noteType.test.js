@@ -26,4 +26,31 @@ describe('note-type format', () => {
     expect(p.templates[0].backHtml).toBe('{{Front}}<hr>{{Back}}');
     expect(p.css).toBe('.card { font-size: 20px; }');
   });
+
+  it('round-trips frontHtml containing nested ``` fence', () => {
+    const n = {
+      name: 'Code',
+      fields: [{ name: 'Front', ord: 0 }],
+      templates: [{
+        name: 'Card 1',
+        frontHtml: 'before\n```js\nconst x = 1;\n```\nafter',
+        backHtml: 'back',
+        ord: 0,
+      }],
+      css: '',
+    };
+    const p = parseNoteType(serializeNoteType(n));
+    expect(p.templates[0].frontHtml).toBe('before\n```js\nconst x = 1;\n```\nafter');
+  });
+
+  it('round-trips css containing ``` run', () => {
+    const n = {
+      name: 'Code',
+      fields: [{ name: 'Front', ord: 0 }],
+      templates: [{ name: 'Card 1', frontHtml: 'f', backHtml: 'b', ord: 0 }],
+      css: '/* comment with ``` fence marker */',
+    };
+    const p = parseNoteType(serializeNoteType(n));
+    expect(p.css).toBe('/* comment with ``` fence marker */');
+  });
 });

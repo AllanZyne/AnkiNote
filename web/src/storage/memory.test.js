@@ -51,4 +51,10 @@ describe('memory provider', () => {
     const p = makeMemoryProvider({ '.ankinote/settings.json': '{}' });
     expect((await p.read('.ankinote/settings.json')).body).toBe('{}');
   });
+
+  it('conditional write throws ETAG_MISMATCH on ifMatch against missing file', async () => {
+    const p = makeMemoryProvider();
+    await expect(p.write('missing.md', 'content', { ifMatch: 'any-etag' }))
+      .rejects.toMatchObject({ code: 'ETAG_MISMATCH' });
+  });
 });

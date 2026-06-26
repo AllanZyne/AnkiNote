@@ -1,4 +1,4 @@
-import { normalizePath, dirname, DEFAULT_CAPABILITIES } from './provider.js';
+import { normalizePath } from './provider.js';
 
 export function makeMemoryProvider(seed = {}) {
   const files = new Map();   // path -> { body, etag, modified }
@@ -49,8 +49,10 @@ export function makeMemoryProvider(seed = {}) {
     async write(path, body, opts = {}) {
       const p = normalizePath(path);
       const existing = files.get(p);
-      if (opts.ifMatch !== undefined && existing && existing.etag !== opts.ifMatch) {
-        throw Object.assign(new Error('etag mismatch'), { code: 'ETAG_MISMATCH' });
+      if (opts.ifMatch !== undefined) {
+        if (!existing || existing.etag !== opts.ifMatch) {
+          throw Object.assign(new Error('etag mismatch'), { code: 'ETAG_MISMATCH' });
+        }
       }
       const etag = nextEtag();
       putFile(p, body, etag);

@@ -3,14 +3,20 @@ import yaml from 'js-yaml';
 const FM = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 
 function fence(lang, content) {
-  return '```' + lang + '\n' + (content ?? '') + '\n```';
+  const text = content ?? '';
+  // Find longest run of backticks in content
+  const matches = text.match(/`+/g);
+  const maxLen = matches ? Math.max(...matches.map(m => m.length)) : 0;
+  const fenceLen = Math.max(3, maxLen + 1);
+  const tick = '`'.repeat(fenceLen);
+  return tick + lang + '\n' + text + '\n' + tick;
 }
 
 // Extract the first fenced block of `lang` that appears under "## heading".
 function blockUnder(body, heading, lang) {
-  const re = new RegExp(`## ${heading}\\s*\\n+\`\`\`${lang}\\n([\\s\\S]*?)\\n\`\`\``, 'm');
+  const re = new RegExp(`## ${heading}\\s*\\n+(\`{3,})${lang}\\n([\\s\\S]*?)\\n\\1`, 'm');
   const m = re.exec(body);
-  return m ? m[1] : '';
+  return m ? m[2] : '';
 }
 
 export function serializeNoteType({ name, fields, templates, css }) {
