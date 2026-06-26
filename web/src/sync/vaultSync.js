@@ -164,7 +164,8 @@ export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
       onlineHandler = () => engine.syncOnce();
       timer = setInterval(onlineHandler, intervalMs);
       if (typeof window !== 'undefined') window.addEventListener('online', onlineHandler);
-      onlineHandler();
+      // No immediate sync here — callers do an explicit initial syncOnce() so its
+      // settled state (synced/offline/error) is observable right after connect.
     },
     stop() {
       if (timer) { clearInterval(timer); timer = null; }

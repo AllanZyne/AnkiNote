@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import App from './App.jsx';
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 beforeEach(async () => {
   await new Promise((resolve, reject) => {
@@ -41,13 +43,16 @@ describe('App boot', () => {
   });
 
   it('keeps the connect dialog open with a hint when the connection fails', async () => {
+    // Stub fetch to reject immediately (simulates a CORS block / unreachable host)
+    // so the webdav provider throws and the engine settles to 'offline' deterministically.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
     render(<App />);
     await waitFor(() => expect(screen.getByText('Connect to your WebDAV vault')).toBeTruthy());
     fireEvent.change(screen.getByLabelText('WebDAV URL'), { target: { value: 'https://unreachable.invalid/dav' } });
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'u' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p' } });
     fireEvent.click(screen.getByText('Connect'));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/CORS headers/), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/CORS headers/));
     // dialog still open
     expect(screen.getByText('Connect to your WebDAV vault')).toBeTruthy();
   });

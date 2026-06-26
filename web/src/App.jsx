@@ -39,8 +39,8 @@ export default function App() {
     const repo = makeRepo(database);
     const engine = makeVaultSync({ db: database, provider });
     engineRef.current = engine;
-    await engine.syncOnce();
     engine.start();
+    await engine.syncOnce();
     await createStarterVault(repo);
     setBoot({ repo, engine });
     setConfig(cfg);
@@ -62,8 +62,7 @@ export default function App() {
   const onConnect = async (cfg) => {
     setConnectError(null);
     await connect(db, cfg);
-    // Brief wait for engine state to settle after connect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // connect() awaits engine.syncOnce(), which sets the final state before resolving.
     const state = engineRef.current?.getStatus().state;
     if (cfg.type === 'webdav' && (state === 'offline' || state === 'error')) {
       setConnectError("Couldn't reach the vault — the server may be down, or it isn't sending CORS headers for this site. See CORS setup in the README.");
