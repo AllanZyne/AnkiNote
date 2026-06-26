@@ -57,4 +57,9 @@ describe('memory provider', () => {
     await expect(p.write('missing.md', 'content', { ifMatch: 'any-etag' }))
       .rejects.toMatchObject({ code: 'ETAG_MISMATCH' });
   });
+
+  it('is local by default and overridable via opts.local', () => {
+    expect(makeMemoryProvider().local).toBe(true);
+    expect(makeMemoryProvider({}, { local: false }).local).toBe(false);
+  });
 });

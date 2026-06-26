@@ -44,6 +44,7 @@ export function makeWebdavProvider({ baseUrl, authHeader, fetchFn = fetch }) {
   const headers = (extra = {}) => ({ ...(authHeader ? { Authorization: authHeader } : {}), ...extra });
 
   return {
+    local: false,
     capabilities: { supportsConditionalWrite: true, supportsMove: true },
 
     async list(path) {

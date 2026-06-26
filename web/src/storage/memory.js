@@ -1,6 +1,6 @@
 import { normalizePath } from './provider.js';
 
-export function makeMemoryProvider(seed = {}) {
+export function makeMemoryProvider(seed = {}, opts = {}) {
   const files = new Map();   // path -> { body, etag, modified }
   const dirs = new Set();    // explicit empty dirs
   let counter = 0;
@@ -35,6 +35,7 @@ export function makeMemoryProvider(seed = {}) {
   }
 
   return {
+    local: opts.local ?? true,
     capabilities: { supportsConditionalWrite: true, supportsMove: true },
 
     async list(path) { return childrenOf(path); },
