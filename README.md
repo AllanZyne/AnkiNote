@@ -27,6 +27,19 @@ On first load, enter your WebDAV URL + credentials (or click "Try demo
 (in-memory)" to explore without a server). Build a deployable PWA with
 `npm run build` (output in `web/dist`).
 
+## Deploy (GitHub Pages)
+
+Pushing to `main` builds `web/` and publishes it to GitHub Pages via
+`.github/workflows/deploy.yml`. One-time setup: in the repo, go to
+**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+Live URL: https://AllanZyne.github.io/AnkiNote/
+
+The app is a pure client PWA; connect it to your WebDAV vault from the in-app
+dialog. Your WebDAV server must send CORS headers for the app's origin
+(`https://AllanZyne.github.io`) — e.g. `dufs --enable-cors`, or the equivalent
+on Nextcloud/rclone.
+
 ## Test
 
 ```bash
