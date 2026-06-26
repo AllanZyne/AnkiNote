@@ -39,4 +39,16 @@ describe('App boot', () => {
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText('Connect to your WebDAV vault')).toBeTruthy());
   });
+
+  it('keeps the connect dialog open with a hint when the connection fails', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Connect to your WebDAV vault')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('WebDAV URL'), { target: { value: 'https://unreachable.invalid/dav' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'u' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p' } });
+    fireEvent.click(screen.getByText('Connect'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/CORS headers/), { timeout: 3000 });
+    // dialog still open
+    expect(screen.getByText('Connect to your WebDAV vault')).toBeTruthy();
+  });
 });

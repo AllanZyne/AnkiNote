@@ -23,4 +23,11 @@ describe('SyncStatus', () => {
     e._emit({ state: 'error', pending: 1, lastSyncedAt: null });
     expect(screen.getByText(/Sync error/)).toBeTruthy();
   });
+
+  it('shows a CORS-aware tooltip when offline', () => {
+    const e = fakeEngine({ state: 'offline', pending: 1, lastSyncedAt: null });
+    const { container } = render(<SyncStatus engine={e} />);
+    const el = container.querySelector('.sync-status');
+    expect(el.getAttribute('title')).toMatch(/CORS headers/);
+  });
 });

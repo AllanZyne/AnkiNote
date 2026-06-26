@@ -16,6 +16,7 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [config, setConfig] = useState(null);     // active provider config
   const [showConnect, setShowConnect] = useState(false);
+  const [connectError, setConnectError] = useState(null);
   const [boot, setBoot] = useState(null);          // { repo, engine }
   const [decks, setDecks] = useState([]);
   const [noteTypes, setNoteTypes] = useState([]);
@@ -58,7 +59,18 @@ export default function App() {
     return () => { active = false; };
   }, [connect]);
 
-  const onConnect = async (cfg) => { await connect(db, cfg); setShowConnect(false); };
+  const onConnect = async (cfg) => {
+    setConnectError(null);
+    await connect(db, cfg);
+    // Brief wait for engine state to settle after connect
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const state = engineRef.current?.getStatus().state;
+    if (cfg.type === 'webdav' && (state === 'offline' || state === 'error')) {
+      setConnectError("Couldn't reach the vault — the server may be down, or it isn't sending CORS headers for this site. See CORS setup in the README.");
+    } else {
+      setShowConnect(false);
+    }
+  };
 
   const connectLabel = config?.type === 'webdav'
     ? (() => { try { return new URL(config.baseUrl).hostname; } catch { return 'WebDAV'; } })()
@@ -212,7 +224,7 @@ export default function App() {
       )}
 
       {showConnect && (
-        <ConnectDialog onConnect={onConnect} onClose={() => setShowConnect(false)} />
+        <ConnectDialog onConnect={onConnect} onClose={() => setShowConnect(false)} error={connectError} />
       )}
     </div>
   );

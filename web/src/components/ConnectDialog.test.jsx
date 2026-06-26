@@ -35,4 +35,9 @@ describe('ConnectDialog', () => {
     fireEvent.click(screen.getByText('Connect to your WebDAV vault'));
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it('renders an error message when the error prop is set', () => {
+    render(<ConnectDialog onConnect={() => {}} onClose={() => {}} error="boom CORS headers" />);
+    expect(screen.getByRole('alert').textContent).toMatch(/CORS headers/);
+  });
 });

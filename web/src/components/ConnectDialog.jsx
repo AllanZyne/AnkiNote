@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function ConnectDialog({ onConnect, onClose }) {
+export default function ConnectDialog({ onConnect, onClose, error }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
@@ -15,6 +15,7 @@ export default function ConnectDialog({ onConnect, onClose }) {
       <div className="modal connect-dialog" onClick={e => e.stopPropagation()}>
         <button className="dialog-close" aria-label="Close" onClick={onClose}>×</button>
         <h2>Connect to your WebDAV vault</h2>
+        {error && <p className="dialog-error" role="alert">{error}</p>}
         <form onSubmit={connect}>
           <label>WebDAV URL
             <input aria-label="WebDAV URL" value={baseUrl} onChange={e => setBaseUrl(e.target.value)}
