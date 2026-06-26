@@ -5,7 +5,7 @@ import { makeMemoryProvider } from '../storage/memory.js';
 import { makeVaultSync } from './vaultSync.js';
 
 let provider;
-beforeEach(() => { provider = makeMemoryProvider(); });
+beforeEach(() => { provider = makeMemoryProvider({}, { local: false }); });
 
 // Fresh IndexedDB + repo + sync on the SAME provider (simulates a second device / clean cache).
 async function freshDevice() {

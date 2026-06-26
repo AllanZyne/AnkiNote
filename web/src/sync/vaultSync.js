@@ -10,7 +10,8 @@ import { serializeIndex } from '../vault/meta.js';
 const NOTE_TYPES_PREFIX = '.ankinote/note-types/';
 
 export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
-  let status = { state: 'synced', pending: 0, lastSyncedAt: null };
+  const isLocal = !!provider.local;
+  let status = { state: isLocal ? 'local' : 'syncing', pending: 0, lastSyncedAt: null };
   const subs = new Set();
   let timer = null, onlineHandler = null, inFlight = false;
   const set = (p) => { status = { ...status, ...p }; for (const cb of subs) cb(status); };
@@ -148,6 +149,7 @@ export function makeVaultSync({ db, provider, intervalMs = 15000 }) {
     subscribe(cb) { subs.add(cb); cb(status); return () => subs.delete(cb); },
     getStatus() { return status; },
     async syncOnce() {
+      if (isLocal) { set({ state: 'local', pending: await pendingCount() }); return; }
       if (inFlight) return;
       inFlight = true;
       set({ state: 'syncing', pending: await pendingCount() });

@@ -10,7 +10,7 @@ beforeEach(async () => {
   const dbName = `ankinote-vsync-${Date.now()}-${Math.random()}`;
   db = await openLocalDb(dbName);
   repo = makeRepo(db);
-  provider = makeMemoryProvider();
+  provider = makeMemoryProvider({}, { local: false });
   sync = makeVaultSync({ db, provider });
 });
 
@@ -56,7 +56,7 @@ describe('vault sync', () => {
     const nt = await repo.createNoteType({ name: 'Basic', css: '', fields: [{ name: 'Front' }], templates: [{ name: 'C', frontHtml: '{{Front}}', backHtml: '' }] });
     const deck = await repo.createDeck({ name: 'D' });
     await repo.createNote({ noteTypeId: nt.id, deckId: deck.id, values: { Front: 'x' } });
-    const throwing = { ...provider, write: async () => { throw new Error('network'); }, list: async () => { throw new Error('network'); } };
+    const throwing = { ...makeMemoryProvider({}, { local: false }), write: async () => { throw new Error('network'); }, list: async () => { throw new Error('network'); } };
     const s2 = makeVaultSync({ db, provider: throwing });
     await s2.syncOnce();
     expect(s2.getStatus().state).toBe('offline');
@@ -81,5 +81,19 @@ describe('vault sync', () => {
     // Verify listNotesInDeck finds the imported note
     const notesInDeck = await repo.listNotesInDeck(spanishDeck.id);
     expect(notesInDeck.some(n => n.id === 'ext2')).toBe(true);
+  });
+
+  it('stays in local state and does no network when the provider is local', async () => {
+    const localProvider = makeMemoryProvider(); // local: true
+    const calls = [];
+    ['list', 'read', 'write'].forEach(m => {
+      const orig = localProvider[m];
+      localProvider[m] = (...a) => { calls.push(m); return orig.apply(localProvider, a); };
+    });
+    const s = makeVaultSync({ db, provider: localProvider });
+    expect(s.getStatus().state).toBe('local');
+    await s.syncOnce();
+    expect(s.getStatus().state).toBe('local');
+    expect(calls).toEqual([]); // no push/pull attempted
   });
 });
